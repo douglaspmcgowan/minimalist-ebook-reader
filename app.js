@@ -9,7 +9,8 @@ const STORE = "boundaries-reader";
 const state = {
   book: null,
   chapter: -1,        // -1 = cover
-  prefs: { theme: "blush", font: "serif", size: "m" },
+  verses: {},         // ref -> { reference, text, translation }
+  prefs: { theme: "blush", font: "serif", size: "m", space: "normal" },
 };
 
 /* ---------- persistence ---------- */
@@ -27,6 +28,7 @@ function applyPrefs() {
   document.body.dataset.theme = state.prefs.theme;
   document.body.dataset.font = state.prefs.font;
   document.body.dataset.size = state.prefs.size;
+  document.body.dataset.space = state.prefs.space;
   // reflect active controls
   document.querySelectorAll(".swatch").forEach((b) =>
     b.classList.toggle("is-on", b.dataset.theme === state.prefs.theme));
@@ -34,6 +36,8 @@ function applyPrefs() {
     b.classList.toggle("is-on", b.dataset.font === state.prefs.font));
   document.querySelectorAll("#sizeSeg button").forEach((b) =>
     b.classList.toggle("is-on", b.dataset.size === state.prefs.size));
+  document.querySelectorAll("#spaceSeg button").forEach((b) =>
+    b.classList.toggle("is-on", b.dataset.space === state.prefs.space));
 }
 
 /* ---------- data loading ---------- */
@@ -116,6 +120,7 @@ function renderChapter(i) {
     }
   }
   art.innerHTML = html;
+  linkifyVerses(art);
   art.hidden = false;
   $("#cover").hidden = true;
   $("#pager").hidden = false;
@@ -132,6 +137,137 @@ function renderChapter(i) {
 const esc = (s) => s.replace(/[&<>]/g, (m) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[m]));
 // escape, then convert Gutenberg-style _italics_ to <em>
 const fmt = (s) => esc(s).replace(/_([^_\n]+)_/g, "<em>$1</em>");
+
+/* ---------- Bible verse references ---------- */
+const BIBLE_BOOKS = [
+  "Genesis","Exodus","Leviticus","Numbers","Deuteronomy","Joshua","Judges","Ruth",
+  "1 Samuel","2 Samuel","1 Kings","2 Kings","1 Chronicles","2 Chronicles","Ezra",
+  "Nehemiah","Esther","Job","Psalms","Psalm","Proverbs","Ecclesiastes","Song of Solomon",
+  "Isaiah","Jeremiah","Lamentations","Ezekiel","Daniel","Hosea","Joel","Amos","Obadiah",
+  "Jonah","Micah","Nahum","Habakkuk","Zephaniah","Haggai","Zechariah","Malachi",
+  "Matthew","Mark","Luke","John","Acts","Romans","1 Corinthians","2 Corinthians",
+  "Galatians","Ephesians","Philippians","Colossians","1 Thessalonians","2 Thessalonians",
+  "1 Timothy","2 Timothy","Titus","Philemon","Hebrews","James","1 Peter","2 Peter",
+  "1 John","2 John","3 John","Jude","Revelation",
+  // common abbreviations
+  "Gen","Exod","Exo","Ex","Lev","Num","Deut","Deu","Josh","Judg","Sam","Kin","Chron","Chr",
+  "Neh","Esth","Est","Psa","Pss","Ps","Prov","Pro","Pr","Eccles","Eccl","Song","Isa","Jer",
+  "Lam","Ezek","Eze","Dan","Hos","Obad","Jon","Mic","Nah","Hab","Zeph","Hag","Zech","Zec","Mal",
+  "Matt","Mat","Mt","Mk","Lk","Jn","Rom","Cor","Gal","Eph","Phil","Php","Col","Thess","Thes",
+  "Tim","Philem","Phlm","Heb","Jas","Pet","Pe","Rev",
+].sort((a, b) => b.length - a.length);
+
+const REF_RE = new RegExp(
+  "\\b(" + BIBLE_BOOKS.map((b) => b.replace(/ /g, "\\s")).join("|") +
+  ")\\.?\\s+(\\d{1,3}):(\\d{1,3}(?:[-–]\\d{1,3})?(?:\\s*,\\s*\\d{1,3}(?:[-–]\\d{1,3})?)*)",
+  "g"
+);
+
+const normRef = (book, chap, verses) =>
+  `${book.replace(/\s+/g, " ").trim()} ${chap}:${verses.replace(/\s+/g, "").replace(/–/g, "-")}`;
+
+// wrap verse references inside an element's text nodes with tappable buttons
+function linkifyVerses(root) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode: (n) =>
+      n.nodeValue.trim() && !n.parentElement.closest(".vref")
+        ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT,
+  });
+  const targets = [];
+  while (walker.nextNode()) targets.push(walker.currentNode);
+  for (const node of targets) {
+    const text = node.nodeValue;
+    REF_RE.lastIndex = 0;
+    if (!REF_RE.test(text)) continue;
+    REF_RE.lastIndex = 0;
+    const frag = document.createDocumentFragment();
+    let last = 0, m;
+    while ((m = REF_RE.exec(text))) {
+      frag.appendChild(document.createTextNode(text.slice(last, m.index)));
+      const btn = document.createElement("button");
+      btn.className = "vref";
+      btn.type = "button";
+      btn.textContent = m[0];
+      btn.dataset.ref = normRef(m[1], m[2], m[3]);
+      frag.appendChild(btn);
+      last = m.index + m[0].length;
+    }
+    frag.appendChild(document.createTextNode(text.slice(last)));
+    node.parentNode.replaceChild(frag, node);
+  }
+}
+
+/* ---------- verse panel ---------- */
+let activeVref = null;
+
+async function lookupVerse(ref) {
+  if (state.verses[ref]) return state.verses[ref];
+  // live fallback (World English Bible, public domain) for refs not pre-bundled
+  try {
+    const r = await fetch("https://bible-api.com/" + encodeURIComponent(ref) + "?translation=web");
+    if (r.ok) {
+      const d = await r.json();
+      if (!d.error && d.text) {
+        const v = { reference: d.reference || ref, text: d.text.trim(), translation: "WEB" };
+        state.verses[ref] = v;
+        return v;
+      }
+    }
+  } catch { /* offline */ }
+  return null;
+}
+
+function positionVersePanel(anchor) {
+  const panel = $("#verse");
+  if (window.innerWidth <= 560) return; // CSS handles bottom-sheet
+  const r = anchor.getBoundingClientRect();
+  const pw = panel.offsetWidth, ph = panel.offsetHeight;
+  const margin = 12;
+  let left = Math.min(Math.max(margin, r.left), window.innerWidth - pw - margin);
+  let top = r.bottom + 8;
+  if (top + ph > window.innerHeight - margin) {
+    const above = r.top - ph - 8;
+    top = above > margin ? above : Math.max(margin, window.innerHeight - ph - margin);
+  }
+  panel.style.left = left + "px";
+  panel.style.top = top + "px";
+}
+
+async function openVerse(btn) {
+  closeVerse();
+  activeVref = btn;
+  btn.classList.add("is-active");
+  const ref = btn.dataset.ref;
+  const panel = $("#verse");
+  $("#verseRef").textContent = btn.textContent;
+  $("#verseBody").textContent = "Looking up…";
+  panel.classList.add("is-loading");
+  $("#vscrim").hidden = false;
+  panel.hidden = false;
+  positionVersePanel(btn);
+
+  const v = await lookupVerse(ref);
+  if (activeVref !== btn) return; // user moved on
+  panel.classList.remove("is-loading");
+  if (v) {
+    $("#verseRef").textContent = v.reference;
+    $("#verseBody").textContent = v.text;
+    $("#verseNote").textContent = "World English Bible · public domain";
+  } else {
+    $("#verseBody").textContent = "Couldn’t load this passage (offline or not found).";
+    $("#verseNote").textContent = "World English Bible · public domain";
+  }
+  positionVersePanel(btn);
+}
+
+function closeVerse() {
+  const panel = $("#verse");
+  if (panel.hidden) return;
+  panel.hidden = true;
+  $("#vscrim").hidden = true;
+  if (activeVref) activeVref.classList.remove("is-active");
+  activeVref = null;
+}
 
 /* ---------- navigation ---------- */
 function goto(i, opts = {}) {
@@ -274,6 +410,18 @@ function wire() {
     const b = e.target.closest("button"); if (!b) return;
     state.prefs.size = b.dataset.size; applyPrefs(); save(state.prefs); updateProgress();
   };
+  $("#spaceSeg").onclick = (e) => {
+    const b = e.target.closest("button"); if (!b) return;
+    state.prefs.space = b.dataset.space; applyPrefs(); save(state.prefs); updateProgress();
+  };
+
+  // verse references (event delegation on the chapter)
+  $("#chapter").addEventListener("click", (e) => {
+    const b = e.target.closest(".vref");
+    if (b) { e.preventDefault(); openVerse(b); }
+  });
+  $("#verseClose").onclick = closeVerse;
+  $("#vscrim").onclick = closeVerse;
 
   // close popover on outside click
   document.addEventListener("click", (e) => {
@@ -287,7 +435,7 @@ function wire() {
     if (e.target.matches("input,textarea")) return;
     if (e.key === "ArrowRight" && state.chapter >= 0 && state.chapter < state.book.chapters.length - 1) goto(state.chapter + 1);
     else if (e.key === "ArrowLeft") { if (state.chapter > 0) goto(state.chapter - 1); else if (state.chapter === 0) showCover(); }
-    else if (e.key === "Escape") { closeTOC(); toggleSettings(false); }
+    else if (e.key === "Escape") { closeVerse(); closeTOC(); toggleSettings(false); }
     else if ((e.key === "t" || e.key === "T") && $("#toc").hidden) openTOC();
   });
 
@@ -295,6 +443,7 @@ function wire() {
   let lastY = 0;
   window.addEventListener("scroll", () => {
     updateProgress();
+    if (!$("#verse").hidden && window.innerWidth > 560) closeVerse();
     const bar = $("#bar");
     bar.classList.toggle("is-scrolled", window.scrollY > 8);
     if (state.chapter >= 0) {
@@ -309,9 +458,15 @@ function wire() {
 /* ---------- boot ---------- */
 (async function init() {
   const saved = load();
-  state.prefs = { ...state.prefs, ...pick(saved, ["theme", "font", "size"]) };
+  state.prefs = { ...state.prefs, ...pick(saved, ["theme", "font", "size", "space"]) };
   applyPrefs();
   wire();
+
+  // bundled public-domain (WEB) verse texts, if present
+  try {
+    const vr = await fetch("verses.json", { cache: "force-cache" });
+    if (vr.ok) state.verses = await vr.json();
+  } catch { /* none bundled — live API fallback still works */ }
 
   state.book = await fetchBook();
   if (!state.book) {

@@ -59,6 +59,14 @@
         <button data-size="xl">A++</button>
       </div>
     </div>
+    <div class="pop__row">
+      <span class="pop__label">Spacing</span>
+      <div class="seg" id="spaceSeg">
+        <button data-space="cozy">Cozy</button>
+        <button data-space="normal" class="is-on">Normal</button>
+        <button data-space="roomy">Roomy</button>
+      </div>
+    </div>
   </div>
 
   <!-- contents drawer -->
@@ -104,6 +112,17 @@
 
   <input type="file" id="fileInput" accept=".json,.txt" hidden />
   <div class="toast" id="toast" hidden></div>
+
+  <!-- verse panel (popover on desktop, bottom sheet on mobile) -->
+  <div class="vscrim" id="vscrim" hidden></div>
+  <div class="verse" id="verse" role="dialog" aria-label="Scripture reference" hidden>
+    <button class="verse__close" id="verseClose" aria-label="Close">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>
+    </button>
+    <div class="verse__ref" id="verseRef"></div>
+    <div class="verse__body" id="verseBody"></div>
+    <div class="verse__note" id="verseNote">World English Bible · public domain</div>
+  </div>
 
   <script src="app.js"></script>
 </body>
