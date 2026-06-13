@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Boundaries — A Minimalist Reader</title>
+  <meta name="description" content="A quiet, minimalist online reader." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..600;1,9..144,300..500&family=Newsreader:ital,opsz,wght@0,6..72,300..500;1,6..72,300..420&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body data-theme="blush" data-font="serif">
+  <!-- reading progress -->
+  <div class="progress" aria-hidden="true"><span class="progress__bar" id="progressBar"></span></div>
+
+  <!-- top bar -->
+  <header class="bar" id="bar">
+    <button class="bar__btn" id="tocBtn" aria-label="Table of contents" title="Contents">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+    </button>
+    <div class="bar__title" id="barTitle">Boundaries</div>
+    <div class="bar__right">
+      <button class="bar__btn" id="loadBtn" aria-label="Load your own book" title="Load your own book file">
+        <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4m0 0L8 8m4-4 4 4M5 20h14"/></svg>
+      </button>
+      <button class="bar__btn" id="aaBtn" aria-label="Reading settings" title="Reading settings">
+        <span class="aa">Aa</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- settings popover -->
+  <div class="pop" id="settings" hidden>
+    <div class="pop__row">
+      <span class="pop__label">Theme</span>
+      <div class="swatches" id="swatches">
+        <button class="swatch" data-theme="blush"   style="--s:#e9c4cd" title="Blush"></button>
+        <button class="swatch" data-theme="sage"    style="--s:#bcd0bf" title="Sage"></button>
+        <button class="swatch" data-theme="mist"    style="--s:#c3d2e3" title="Mist"></button>
+        <button class="swatch" data-theme="butter"  style="--s:#ecdcae" title="Butter"></button>
+        <button class="swatch" data-theme="lilac"   style="--s:#d3c6e6" title="Lilac"></button>
+        <button class="swatch" data-theme="dusk"    style="--s:#3a3550" title="Dusk"></button>
+      </div>
+    </div>
+    <div class="pop__row">
+      <span class="pop__label">Type</span>
+      <div class="seg" id="fontSeg">
+        <button data-font="serif" class="is-on">Serif</button>
+        <button data-font="sans">Sans</button>
+      </div>
+    </div>
+    <div class="pop__row">
+      <span class="pop__label">Size</span>
+      <div class="seg" id="sizeSeg">
+        <button data-size="s">A−</button>
+        <button data-size="m" class="is-on">A</button>
+        <button data-size="l">A+</button>
+        <button data-size="xl">A++</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- contents drawer -->
+  <aside class="toc" id="toc" hidden>
+    <div class="toc__head">
+      <span>Contents</span>
+      <button class="bar__btn" id="tocClose" aria-label="Close contents">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
+    </div>
+    <nav class="toc__list" id="tocList"></nav>
+  </aside>
+  <div class="scrim" id="scrim" hidden></div>
+
+  <!-- main reading surface -->
+  <main class="reader" id="reader">
+    <!-- cover -->
+    <section class="cover" id="cover">
+      <div class="cover__mark">❦</div>
+      <p class="cover__kicker" id="coverKicker"></p>
+      <h1 class="cover__title" id="coverTitle"></h1>
+      <p class="cover__sub" id="coverSub"></p>
+      <p class="cover__by" id="coverBy"></p>
+      <button class="cover__cta" id="beginBtn">Begin reading</button>
+      <p class="cover__resume" id="resumeLine" hidden></p>
+    </section>
+
+    <!-- chapter content injected here -->
+    <article class="chapter" id="chapter" hidden></article>
+
+    <!-- chapter footer nav -->
+    <footer class="pager" id="pager" hidden>
+      <button class="pager__btn" id="prevBtn">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>
+        <span id="prevLabel">Previous</span>
+      </button>
+      <button class="pager__btn pager__btn--next" id="nextBtn">
+        <span id="nextLabel">Next</span>
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>
+      </button>
+    </footer>
+  </main>
+
+  <input type="file" id="fileInput" accept=".json,.txt" hidden />
+  <div class="toast" id="toast" hidden></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

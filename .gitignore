@@ -1,0 +1,11 @@
+# Copyrighted source material — NEVER commit (personal/local use only)
+content-private/
+book.json
+*.pdf
+
+# OS / editor
+.DS_Store
+Thumbs.db
+desktop.ini
+node_modules/
+.vercel
