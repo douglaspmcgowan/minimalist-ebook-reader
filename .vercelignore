@@ -1,0 +1,6 @@
+# Copyrighted source — never upload to the public deploy
+content-private/
+book.json
+_book.json.local
+*.pdf
+.claude/
