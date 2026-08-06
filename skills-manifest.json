@@ -2,25 +2,101 @@
   "schemaVersion": 2,
   "project": "boundaries-reader",
   "bindings": [
-    {"capability": "deep-search", "canonical": ["deep-search"], "delivery": "vendored"},
-    {"capability": "recon", "canonical": ["source-command-recon"], "delivery": "vendored"},
-    {"capability": "ultra-skill", "canonical": ["source-command-ultra-skill"], "delivery": "vendored"},
-    {"capability": "task-design", "canonical": ["source-command-task", "source-command-design"], "delivery": "vendored"},
     {
-      "capability": "engineering-workflow",
+      "capability": "deep-search",
       "canonical": [
-        "source-command-brainstorming",
-        "source-command-systematic-debugging",
-        "source-command-test-driven-development",
-        "source-command-requesting-code-review",
-        "source-command-verification-before-completion"
+        "deep-search"
       ],
       "delivery": "vendored"
     },
-    {"capability": "interface-workflow", "canonical": ["impeccable"], "delivery": "vendored"},
-    {"capability": "parallel-work", "canonical": ["parallelize"], "delivery": "vendored"},
-    {"capability": "design-review", "canonical": ["source-command-design-review"], "delivery": "vendored"},
-    {"capability": "docket", "canonical": ["source-command-docket"], "delivery": "vendored"},
+    {
+      "capability": "recon",
+      "canonical": [
+        "source-command-recon"
+      ],
+      "delivery": "vendored"
+    },
+    {
+      "capability": "ultra-skill",
+      "canonical": [
+        "source-command-ultra-skill"
+      ],
+      "delivery": "vendored"
+    },
+    {
+      "capability": "task-design",
+      "canonical": [
+        "source-command-task",
+        "source-command-design"
+      ],
+      "delivery": "vendored"
+    },
+    {
+      "capability": "work-scope",
+      "canonical": [
+        "work-scope"
+      ],
+      "delivery": "vendored"
+    },
+    {
+      "capability": "engineering-workflow",
+      "canonical": [
+        "brainstorming",
+        "using-git-worktrees",
+        "writing-plans",
+        "subagent-driven-development",
+        "executing-plans",
+        "systematic-debugging",
+        "test-driven-development",
+        "requesting-code-review",
+        "receiving-code-review",
+        "verification-before-completion",
+        "finishing-a-development-branch"
+      ],
+      "delivery": "vendored"
+    },
+    {
+      "capability": "interface-workflow",
+      "canonical": [
+        "impeccable"
+      ],
+      "delivery": "vendored"
+    },
+    {
+      "capability": "parallel-work",
+      "canonical": [
+        "dispatching-parallel-agents"
+      ],
+      "delivery": "vendored"
+    },
+    {
+      "capability": "skill-discovery",
+      "canonical": [
+        "using-superpowers"
+      ],
+      "delivery": "vendored"
+    },
+    {
+      "capability": "skill-authoring",
+      "canonical": [
+        "writing-skills"
+      ],
+      "delivery": "vendored"
+    },
+    {
+      "capability": "design-review",
+      "canonical": [
+        "source-command-design-review"
+      ],
+      "delivery": "vendored"
+    },
+    {
+      "capability": "docket",
+      "canonical": [
+        "source-command-docket"
+      ],
+      "delivery": "vendored"
+    },
     {
       "capability": "harden-tail",
       "canonical": [
@@ -31,12 +107,41 @@
         "source-command-spar"
       ],
       "chain": "harden-tail",
-      "steps": ["solo-review", "probe", "hone", "spar"],
+      "steps": [
+        "solo-review",
+        "probe",
+        "hone",
+        "spar"
+      ],
       "delivery": "pathway"
     },
-    {"capability": "probe", "canonical": ["source-command-probe"], "delivery": "vendored"},
-    {"capability": "spar", "canonical": ["source-command-spar"], "delivery": "vendored"},
-    {"capability": "spec", "canonical": ["source-command-spec"], "delivery": "vendored"},
-    {"capability": "correct", "canonical": ["correct"], "delivery": "vendored"}
+    {
+      "capability": "probe",
+      "canonical": [
+        "source-command-probe"
+      ],
+      "delivery": "vendored"
+    },
+    {
+      "capability": "spar",
+      "canonical": [
+        "source-command-spar"
+      ],
+      "delivery": "vendored"
+    },
+    {
+      "capability": "spec",
+      "canonical": [
+        "source-command-spec"
+      ],
+      "delivery": "vendored"
+    },
+    {
+      "capability": "correct",
+      "canonical": [
+        "correct"
+      ],
+      "delivery": "vendored"
+    }
   ]
 }

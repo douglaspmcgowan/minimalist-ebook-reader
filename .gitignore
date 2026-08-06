@@ -12,5 +12,4 @@ node_modules/
 
 .vercel
 
-# local task state
-CURRENT-TASK.md
+# Project task state is tracked for cross-agent handoffs.
