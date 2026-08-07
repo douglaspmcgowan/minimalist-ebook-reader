@@ -11,25 +11,28 @@
     },
     {
       "capability": "recon",
-      "canonical": [
-        "source-command-recon"
+      "canonical": [],
+      "commands": [
+        "recon"
       ],
-      "delivery": "vendored"
+      "delivery": "command"
     },
     {
       "capability": "ultra-skill",
-      "canonical": [
-        "source-command-ultra-skill"
+      "canonical": [],
+      "commands": [
+        "ultraskill"
       ],
-      "delivery": "vendored"
+      "delivery": "command"
     },
     {
       "capability": "task-design",
-      "canonical": [
-        "source-command-task",
-        "source-command-design"
+      "canonical": [],
+      "commands": [
+        "task",
+        "design"
       ],
-      "delivery": "vendored"
+      "delivery": "command"
     },
     {
       "capability": "work-scope",
@@ -85,26 +88,29 @@
     },
     {
       "capability": "design-review",
-      "canonical": [
-        "source-command-design-review"
+      "canonical": [],
+      "commands": [
+        "design-review"
       ],
-      "delivery": "vendored"
+      "delivery": "command"
     },
     {
       "capability": "docket",
-      "canonical": [
-        "source-command-docket"
+      "canonical": [],
+      "commands": [
+        "docket"
       ],
-      "delivery": "vendored"
+      "delivery": "command"
     },
     {
       "capability": "harden-tail",
-      "canonical": [
-        "source-command-pathway",
-        "source-command-solo-review",
-        "source-command-probe",
-        "source-command-hone",
-        "source-command-spar"
+      "canonical": [],
+      "commands": [
+        "pathway",
+        "solo-review",
+        "probe",
+        "hone",
+        "spar"
       ],
       "chain": "harden-tail",
       "steps": [
@@ -117,24 +123,27 @@
     },
     {
       "capability": "probe",
-      "canonical": [
-        "source-command-probe"
+      "canonical": [],
+      "commands": [
+        "probe"
       ],
-      "delivery": "vendored"
+      "delivery": "command"
     },
     {
       "capability": "spar",
-      "canonical": [
-        "source-command-spar"
+      "canonical": [],
+      "commands": [
+        "spar"
       ],
-      "delivery": "vendored"
+      "delivery": "command"
     },
     {
       "capability": "spec",
-      "canonical": [
-        "source-command-spec"
+      "canonical": [],
+      "commands": [
+        "spec"
       ],
-      "delivery": "vendored"
+      "delivery": "command"
     },
     {
       "capability": "correct",
