@@ -33,7 +33,7 @@ Agents may create local commits for in-scope work without asking. Never push, me
 
 ## Start and resume
 
-1. Read this file, `TASK.md`, `STATUS.md`, and recent `LOG.md`.
+1. Read this file, `TASK.md`, and recent `LOG.md`.
 2. Run `git status --short --branch` and inspect worktrees before editing.
 3. Read `MAP.md` for architecture, data, ownership, integrations, or important paths.
 4. Read `DESIGN.md` for interface work and `PRODUCT.md` when present.
@@ -55,7 +55,6 @@ Record the actual command or observable proof under `TASK.md` → `Verification`
 ## Project files
 
 - `TASK.md`: current goal, actionable queue, blockers, completed evidence, and next verifier.
-- `STATUS.md`: durable capability state.
 - `LOG.md`: append-only completed-work record.
 - `BACKBURNER.md`: parked ideas.
 - `MAP.md`: architecture, paths, data flow, integrations, and ownership.
