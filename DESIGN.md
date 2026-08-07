@@ -3,7 +3,36 @@
 <!-- agent-harness:universal-design:v1:start -->
 ## Universal interface rules
 
+The authority is `~/.agents/DESIGN.md`, and it is fuller than this. What follows is
+carried here rather than only linked because a cloud or container session has no
+`~/.agents` to reach — so the rules that actually change what gets built have to survive
+in the repository itself.
+
+### Anti-default discipline
+
+Quoted verbatim from the authority rather than paraphrased, because this is the section an
+agent most needs and a paraphrase is a second copy that drifts.
+
+The model's house style is recognizable, and reaching for it reads as machine-made. Never
+default to: purple-blue gradients, a centered hero over a dark mesh background, three equal
+feature cards, ubiquitous glassmorphism, or Inter with slate everywhere. The
+beige-brass-espresso "premium consumer" palette is the same tell; rotate off it.
+
+- Lock one accent color page-wide, and one gray family per project.
+- Lock one corner-radius system per page. Mix radii only under a rule you can state.
+- Keep one theme per page. Sections do not invert light and dark mid-scroll except as a single deliberate composition device.
+- A section layout family appears at most once per page. At most two consecutive image-text zigzag splits. At most one small uppercase eyebrow label per three sections.
+- Where a brief reads as an established design system, use that system's official package rather than approximating it. One system per project.
+- The brief wins. Honor a pinned aesthetic even when it is not the choice you would make; redirecting a clear brief toward your own taste is failure, not judgment.
+
+### Everything else
+
 - Never use IBM Plex Mono.
+- Default to a sans display face. Use serif only with an articulated reason; `Fraunces` and `Instrument Serif` are banned as defaults specifically because they are the common machine-made choice.
+- Hero discipline: the hero fits the first viewport, the headline runs at most two lines, subtext stays under roughly twenty words, and no more than four text elements sit inside it. Trust marks and logo walls go below the hero, never in it.
+- A grid has exactly as many cells as there is content for. Reshape the grid rather than pasting in a blank tile.
+- Every animation names what it communicates — hierarchy, sequence, feedback, or state change. An animation that names nothing gets cut.
+- Reread every visible string before shipping. Never invent a precise-sounding number.
 - Use a proportional body face for prose, navigation, labels, dates, names, and human-readable metadata.
 - Reserve monospace for code, commands, identifiers, timestamps, and genuinely tabular numeric data.
 - Define explicit body, display, and monospace roles. Use tabular numerals on the proportional face for aligned quantities.
