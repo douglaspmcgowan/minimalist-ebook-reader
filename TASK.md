@@ -34,7 +34,7 @@ Close the generic PDF-to-ebook release gaps found by the 2026-08-24 independent 
 
 ## Verification
 
-- Public: 97 Python converter tests and 28 Node reader tests pass; `node --check app.js` and `git diff --check` pass. `MAP.md` owns the exact commands.
+- Public: 114 Python converter tests and 28 Node reader tests pass; `node --check app.js` and `git diff --check` pass. `MAP.md` owns the exact commands.
 - Private: 35 package tests and `import-book.py --verify-only` pass with 229 assets, 21 sections, 945 blocks, zero facsimiles, and source identity matching the ignored local manifest.
 - Security: full-history Gitleaks and the Git/Vercel private-local ignore checks pass.
 - Interface: desktop and 390px reading, contents navigation, resume, settings, pager, containment, and current-origin console checks pass. The detector reports only the two incumbent warnings recorded by the design contract.
