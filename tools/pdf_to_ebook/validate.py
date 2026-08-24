@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import hashlib
+import re
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Iterable
 
 from .model import ReviewItem, SemanticBlock
@@ -14,6 +17,8 @@ class ValidationReport:
     missing_pages: list[int]
     unresolved_high_severity: int
     block_inventory: dict[str, int]
+    unresolved_contents_targets: int = 0
+    missing_text_tokens: list[str] = field(default_factory=list)
     items: list[ReviewItem] = field(default_factory=list)
 
     def to_dict(self) -> dict:
@@ -22,8 +27,10 @@ class ValidationReport:
             "covered_pages": self.covered_pages,
             "items": [item.to_dict() for item in self.items],
             "missing_pages": self.missing_pages,
+            "missing_text_tokens": self.missing_text_tokens,
             "page_count": self.page_count,
             "releasable": self.releasable,
+            "unresolved_contents_targets": self.unresolved_contents_targets,
             "unresolved_high_severity": self.unresolved_high_severity,
         }
 
@@ -33,11 +40,21 @@ def validate_release(
     page_count: int,
     review_items: Iterable[ReviewItem] = (),
     intentionally_excluded_pages: Iterable[int] = (),
+    reader_targets: Iterable[str] = (),
+    page_targets: dict[int, str] | None = None,
+    non_text_objects: Iterable[dict] = (),
+    asset_root: str | Path | None = None,
+    expected_source_tokens: Iterable[str] = (),
 ) -> ValidationReport:
     materialized = list(blocks)
     items = list(review_items)
     covered: set[int] = set(int(page) for page in intentionally_excluded_pages)
     inventory: dict[str, int] = {}
+    targets = {str(target) for target in reader_targets}
+    page_target_map = {int(page): str(target) for page, target in (page_targets or {}).items()}
+    prior_order: dict[int, int] = {}
+    unresolved_contents_targets = 0
+    assets: list[tuple[int | None, dict]] = []
 
     for position, block in enumerate(materialized):
         inventory[block.kind] = inventory.get(block.kind, 0) + 1
@@ -57,6 +74,36 @@ def validate_release(
                 items.append(ReviewItem("invalid-table-shape", "high", block.provenance[0].page if block.provenance else None, f"Table block {position} has inconsistent columns."))
         if block.kind == "figure" and not str(block.data.get("alt") or "").strip():
             items.append(ReviewItem("missing-figure-alt", "high", block.provenance[0].page if block.provenance else None, f"Figure block {position} needs alternative text."))
+        if block.kind == "figure":
+            assets.append((block.provenance[0].page if block.provenance else None, block.data))
+        if block.kind == "contents":
+            for entry in block.data.get("entries", []):
+                if not isinstance(entry, dict):
+                    unresolved_contents_targets += 1
+                    items.append(ReviewItem("unresolved-contents-target", "high", block.provenance[0].page if block.provenance else None, f"Contents block {position} has an invalid entry."))
+                    continue
+                target = entry.get("target")
+                if not target:
+                    try:
+                        target = page_target_map.get(int(entry.get("target_page")))
+                    except (TypeError, ValueError):
+                        target = None
+                if not target or str(target) not in targets:
+                    unresolved_contents_targets += 1
+                    items.append(ReviewItem("unresolved-contents-target", "high", block.provenance[0].page if block.provenance else None, f"Contents entry {entry.get('title')!r} does not resolve to a reader target."))
+        if block.kind == "form":
+            page = block.provenance[0].page if block.provenance else None
+            fields = block.data.get("fields")
+            worksheet = block.data.get("worksheet") if isinstance(block.data.get("worksheet"), dict) else {}
+            rows = block.data.get("rows") or worksheet.get("rows")
+            if not isinstance(fields, list) and not isinstance(rows, list):
+                items.append(ReviewItem("missing-form-inventory", "high", page, f"Form block {position} has no fields or worksheet rows."))
+            for field in fields if isinstance(fields, list) else []:
+                if not isinstance(field, dict) or not str(field.get("label") or "").strip():
+                    items.append(ReviewItem("missing-form-field-label", "high", page, f"Form block {position} has an unlabelled field."))
+            for row in rows if isinstance(rows, list) else []:
+                if not isinstance(row, dict) or not str(row.get("label") or "").strip():
+                    items.append(ReviewItem("missing-form-row-label", "high", page, f"Form block {position} has an unlabelled worksheet row."))
         for source in block.provenance:
             if source.page < 1 or source.page > page_count:
                 items.append(ReviewItem("invalid-source-page", "high", source.page, f"Block {position} points outside the source."))
@@ -64,6 +111,14 @@ def validate_release(
                 covered.add(source.page)
             if len(source.bbox) != 4:
                 items.append(ReviewItem("invalid-bbox", "high", source.page, f"Block {position} has an invalid source box."))
+            previous = prior_order.get(source.page)
+            if previous is not None and source.reading_order <= previous:
+                items.append(ReviewItem("inconsistent-provenance-order", "high", source.page, f"Block {position} regresses or repeats reading order on source page {source.page}."))
+            prior_order[source.page] = source.reading_order
+
+    _validate_non_text_objects(items, assets, non_text_objects)
+    _validate_assets(items, assets, asset_root)
+    missing_text_tokens = _validate_text_coverage(items, materialized, expected_source_tokens)
 
     missing = [page for page in range(1, page_count + 1) if page not in covered]
     items.extend(ReviewItem("missing-page-coverage", "high", page, "Source page has no semantic or approved exclusion coverage.") for page in missing)
@@ -75,5 +130,81 @@ def validate_release(
         missing_pages=missing,
         unresolved_high_severity=unresolved,
         block_inventory=inventory,
+        unresolved_contents_targets=unresolved_contents_targets,
+        missing_text_tokens=missing_text_tokens,
         items=items,
     )
+
+
+def _validate_non_text_objects(items: list[ReviewItem], figures: list[tuple[int | None, dict]], objects: Iterable[dict]) -> None:
+    for position, obj in enumerate(objects):
+        if not isinstance(obj, dict):
+            items.append(ReviewItem("missing-non-text-object-disposition", "high", None, f"Non-text object {position} has no usable disposition."))
+            continue
+        page = obj.get("page")
+        object_id = obj.get("id") or obj.get("object_id") or obj.get("object_name")
+        matched = any(
+            figure_page == page
+            and (not object_id or object_id in {data.get("id"), data.get("object_id"), data.get("object_name")})
+            for figure_page, data in figures
+        )
+        approved = any(
+            item.approved
+            and item.code == "non-text-object-disposition"
+            and (item.page == page or item.details.get("object_id") == object_id)
+            for item in items
+        )
+        if not matched and not approved:
+            items.append(ReviewItem("missing-non-text-object-disposition", "high", page if isinstance(page, int) else None, f"Non-text object {object_id or position} lacks a semantic block or approved disposition."))
+
+
+def _validate_assets(items: list[ReviewItem], figures: list[tuple[int | None, dict]], asset_root: str | Path | None) -> None:
+    if asset_root is None:
+        return
+    root = Path(asset_root).resolve()
+    for page, data in figures:
+        asset = data.get("asset") or data.get("src")
+        if not isinstance(asset, str) or not asset.strip():
+            items.append(ReviewItem("missing-asset", "high", page, "Figure has no asset path."))
+            continue
+        try:
+            path = (root / asset).resolve()
+            path.relative_to(root)
+        except (OSError, ValueError):
+            items.append(ReviewItem("invalid-asset-path", "high", page, f"Figure asset {asset!r} escapes the asset root."))
+            continue
+        if not path.is_file():
+            items.append(ReviewItem("missing-asset", "high", page, f"Figure asset {asset!r} is absent."))
+            continue
+        expected = data.get("sha256") or data.get("asset_sha256")
+        if not isinstance(expected, str) or not re.fullmatch(r"[0-9a-fA-F]{64}", expected):
+            items.append(ReviewItem("missing-asset-sha256", "high", page, f"Figure asset {asset!r} has no SHA-256."))
+            continue
+        actual = hashlib.sha256(path.read_bytes()).hexdigest()
+        if actual.lower() != expected.lower():
+            items.append(ReviewItem("asset-sha256-mismatch", "high", page, f"Figure asset {asset!r} does not match its SHA-256."))
+
+
+def _validate_text_coverage(items: list[ReviewItem], blocks: Iterable[SemanticBlock], expected_tokens: Iterable[str]) -> list[str]:
+    present: set[str] = set()
+    for block in blocks:
+        present.update(_tokens(block.data))
+    missing = sorted({token.lower() for value in expected_tokens for token in _tokens(value)} - present)
+    for token in missing:
+        items.append(ReviewItem("missing-source-text-token", "high", None, f"Expected source token {token!r} has no semantic coverage."))
+    return missing
+
+
+_NON_TEXT_DATA_KEYS = {
+    "asset", "asset_sha256", "id", "object_id", "object_name", "page", "sha256", "src", "target", "target_page",
+}
+
+
+def _tokens(value: object) -> list[str]:
+    if isinstance(value, str):
+        return re.findall(r"[\w]+", value.lower())
+    if isinstance(value, dict):
+        return [token for key, item in value.items() if key not in _NON_TEXT_DATA_KEYS for token in _tokens(item)]
+    if isinstance(value, (list, tuple)):
+        return [token for item in value for token in _tokens(item)]
+    return []
