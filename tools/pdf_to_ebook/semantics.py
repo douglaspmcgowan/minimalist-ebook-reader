@@ -9,6 +9,8 @@ from .model import ExtractionRecord, SemanticBlock
 _LIST = re.compile(r"^\s*(?P<marker>(?:\d+[.)]|[-*•]))\s+(?P<text>.+)$")
 _INDEX = re.compile(r"^\s*(?P<term>[^,]+),\s*(?P<locators>\d+(?:\s*,\s*\d+)*)\s*$")
 _OPENING_PUNCTUATION = "\"'“‘«‹([{"
+_TERMINAL_SENTENCE = re.compile(r"[.!?…:;][\"'”’»›)\]}]*$")
+_HEADING_CONNECTORS = frozenset({"a", "an", "and", "as", "at", "by", "for", "from", "in", "of", "on", "or", "the", "to", "with", "without"})
 
 
 def _block(kind: str, data: dict, records: list[ExtractionRecord], confidence: float, *evidence: str) -> SemanticBlock:
@@ -162,20 +164,111 @@ def _cross_page_flow(first: ExtractionRecord, second: ExtractionRecord) -> bool:
     )
 
 
+def _explicit_continuation(first: ExtractionRecord, second: ExtractionRecord, kind: str) -> bool:
+    return bool(
+        first.metadata.get("continuation")
+        or second.metadata.get("continuation")
+        or first.metadata.get(f"{kind}_continuation")
+        or second.metadata.get(f"{kind}_continuation")
+    )
+
+
+def _has_terminal_sentence(text: str) -> bool:
+    return bool(_TERMINAL_SENTENCE.search(text.strip()))
+
+
 def _can_join_paragraph_line(first: ExtractionRecord, second: ExtractionRecord) -> bool:
     if not _is_plain_text(second):
         return False
     if second.page == first.page:
         return _same_page_flow(first, second) and not (
-            re.search(r"[.!?…:;][\"')\]]*$", first.text.strip())
+            _has_terminal_sentence(first.text)
             and _initial_text_character(second.text).isupper()
         )
     return (
         _same_column(first, second)
         and _cross_page_flow(first, second)
         and second.text[:1].islower()
-        and not re.search(r"[.!?…:;][\"')\]]*$", first.text.strip())
+        and not _has_terminal_sentence(first.text)
     )
+
+
+def _table_columns(table: dict) -> int:
+    headers = table.get("headers")
+    rows = table.get("rows")
+    if not isinstance(rows, list) or any(not isinstance(row, list) for row in rows):
+        return 0
+    widths = [len(headers)] if isinstance(headers, list) and headers else []
+    widths.extend(len(row) for row in rows)
+    return widths[0] if widths and all(width == widths[0] for width in widths) else 0
+
+
+def _can_join_table(first: ExtractionRecord, second: ExtractionRecord) -> bool:
+    if not isinstance(first.table, dict) or not isinstance(second.table, dict):
+        return False
+    if not (_same_column(first, second) and abs(first.bbox[2] - second.bbox[2]) <= 12 and _cross_page_flow(first, second)):
+        return False
+    first_headers = first.table.get("headers")
+    second_headers = second.table.get("headers")
+    if not isinstance(first_headers, list) or not first_headers or first_headers != second_headers:
+        return False
+    if not _table_columns(first.table) or _table_columns(first.table) != _table_columns(second.table):
+        return False
+    second_caption = second.table.get("caption")
+    return not second_caption or second_caption == first.table.get("caption") or _explicit_continuation(first, second, "table")
+
+
+def _table_data(records: list[ExtractionRecord]) -> dict:
+    table = dict(records[0].table or {})
+    table["rows"] = [
+        list(row)
+        for record in records
+        for row in (record.table or {}).get("rows", [])
+        if isinstance(row, list)
+    ]
+    return table
+
+
+def _can_join_quotation(first: ExtractionRecord, second: ExtractionRecord) -> bool:
+    if second.role_hint != first.role_hint or first.role_hint not in {"quotation", "testimonial"}:
+        return False
+    if not (_same_column(first, second) and _cross_page_flow(first, second)):
+        return False
+    if first.metadata.get("attribution") or _has_terminal_sentence(first.text):
+        return False
+    return _explicit_continuation(first, second, first.role_hint) or _initial_text_character(second.text).islower()
+
+
+def _quotation_data(records: list[ExtractionRecord]) -> dict:
+    metadata: dict = {}
+    for record in records:
+        metadata.update(record.metadata)
+    return {**metadata, "text": _join_records(records)}
+
+
+def _heading_level(record: ExtractionRecord) -> int:
+    return int(record.metadata.get("level", 1 if record.font_size >= 18 else 2))
+
+
+def _is_heading(record: ExtractionRecord) -> bool:
+    return record.role_hint == "heading" or (record.bold and record.font_size >= 15)
+
+
+def _can_join_heading(first: ExtractionRecord, second: ExtractionRecord) -> bool:
+    if not _is_heading(second) or not (_same_column(first, second) and _cross_page_flow(first, second)):
+        return False
+    if not (first.bold and second.bold and first.font_size >= 15 and second.font_size >= 15):
+        return False
+    if _heading_level(first) != _heading_level(second) or abs(first.font_size - second.font_size) > 1:
+        return False
+    first_target = first.metadata.get("target")
+    second_target = second.metadata.get("target")
+    if first_target and second_target and first_target != second_target:
+        return False
+    if _explicit_continuation(first, second, "heading"):
+        return True
+    words = re.sub(r"[^\w]+$", "", first.text.strip()).casefold().rsplit(maxsplit=1)
+    return bool(words and (words[-1] in _HEADING_CONNECTORS or _initial_text_character(second.text).islower()))
 
 
 def _list_marker_family(record: ExtractionRecord) -> str | None:
@@ -290,8 +383,17 @@ def classify_records(records: Iterable[ExtractionRecord]) -> list[SemanticBlock]
             continue
 
         if hint == "table" or record.table:
-            table = dict(record.table or {"caption": record.text, "headers": [], "rows": []})
-            blocks.append(_block("table", table, [record], 0.98 if record.table else 0.65, "table-grid", "role-hint"))
+            group = [record]
+            index += 1
+            while index < len(source) and _can_join_table(group[-1], source[index]):
+                group.append(source[index])
+                index += 1
+            table = _table_data(group) if len(group) > 1 else dict(record.table or {"caption": record.text, "headers": [], "rows": []})
+            evidence = ["table-grid", "role-hint"]
+            if len(group) > 1:
+                evidence.append("cross-page-continuation")
+            blocks.append(_block("table", table, group, 0.98 if record.table else 0.65, *evidence))
+            continue
         elif hint == "form" or record.form:
             form = dict(record.form or {"title": record.text, "instructions": "", "fields": []})
             blocks.append(_block("form", form, [record], 0.98 if record.form else 0.65, "label-field-relationships", "role-hint"))
@@ -313,15 +415,33 @@ def classify_records(records: Iterable[ExtractionRecord]) -> list[SemanticBlock]
             blocks.append(_block("index", {"entries": [_index_entry(item) for item in group]}, group, 0.94, "term-locator-pattern", "role-hint"))
             continue
         elif hint in {"quotation", "testimonial"}:
-            blocks.append(_block(hint, {"text": record.text.strip(), **record.metadata}, [record], 0.9, "role-hint"))
+            group = [record]
+            index += 1
+            while index < len(source) and _can_join_quotation(group[-1], source[index]):
+                group.append(source[index])
+                index += 1
+            evidence = ["role-hint"]
+            if len(group) > 1:
+                evidence.append("cross-page-continuation")
+            blocks.append(_block(hint, _quotation_data(group), group, 0.9, *evidence))
+            continue
         elif hint == "divider":
             blocks.append(_block("divider", {}, [record], 0.9, "role-hint"))
         elif hint == "heading" or (record.bold and record.font_size >= 15):
-            level = int(record.metadata.get("level", 1 if record.font_size >= 18 else 2))
-            heading = {"text": record.text.strip(), "level": level, "target": record.metadata.get("target")}
-            if record.links:
-                heading["links"] = _links_data([record])
-            blocks.append(_block("heading", heading, [record], 0.92, "typography", "role-hint" if hint else "font-size"))
+            group = [record]
+            index += 1
+            while index < len(source) and _can_join_heading(group[-1], source[index]):
+                group.append(source[index])
+                index += 1
+            target = next((item.metadata.get("target") for item in group if item.metadata.get("target")), None)
+            heading = {"text": _join_records(group), "level": _heading_level(record), "target": target}
+            if any(item.links for item in group):
+                heading["links"] = _links_data(group)
+            evidence = ["typography", "role-hint" if hint else "font-size"]
+            if len(group) > 1:
+                evidence.append("cross-page-continuation")
+            blocks.append(_block("heading", heading, group, 0.92, *evidence))
+            continue
         else:
             group = [record]
             index += 1
