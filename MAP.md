@@ -56,7 +56,7 @@ The ignored source PDF enters the semantic converter. Layout extraction creates 
 
 - The ignored private edition contains 21 sections, 229 page-coverage records, 945 semantic blocks, 33 cropped figures, 9 tables, 28 forms, 11 index blocks, and zero default-flow facsimiles.
 - The latest verified account-protected preview is `https://boundaries-reader-mgdlai4nb-douglas-mcgowans-projects.vercel.app`.
-- One hundred forty-five public converter tests, 30 reader tests, 35 private package tests, verification-only integrity, three disjoint page reviews, and desktop/390px checks are the current release evidence; `TASK.md` records the results.
+- One hundred forty-seven public converter tests, 30 reader tests, 35 private package tests, verification-only integrity, three disjoint page reviews, and desktop/390px checks are the current release evidence; `TASK.md` records the results.
 
 ## Verification commands
 
