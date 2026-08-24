@@ -1,12 +1,7 @@
-version: 1
+version: 2
 project: "boundaries-reader"
 data_root_env: "PROJECT_DATA_ROOT"
-assets:
-  - name: "<asset-name>"
-    relative_path: "inputs/<path>"
-    format: "<format>"
-    source: "<authoritative source>"
-    sensitivity: "<public|internal|private|restricted>"
-    version: "<version or date>"
-    checksum: "<sha256 when applicable>"
-    regenerate: "<command or manual procedure>"
+assets: []
+
+# Private book inputs remain local and ignored. Add a manifest asset only when a reviewed
+# repository adapter exists for restoring and verifying that external data safely.

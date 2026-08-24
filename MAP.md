@@ -9,12 +9,9 @@
 | `SPEC.md` | Humans, agents, and tests | Design, implementation, review | Authoritative PDF-to-ebook behavior and acceptance criteria |
 | `CLAUDE.md` | Claude adapter | Every Claude repository session | Imports `AGENTS.md` |
 | `.cursor/rules/00-project-contract.mdc` | Cursor adapter | Every Cursor repository session | Requires `AGENTS.md` |
-| `CURRENT-TASK.md` | Agents and humans | Start, resume, handoff | Active goal, progress, exact next verifier |
-| `WORK_QUEUE.md` | Agents and harness | Multi-step work | Actionable checkbox state |
-| `STATUS.md` | Agents and humans | Start, resume, milestone | Durable project state |
+| `TASK.md` | Agents and humans | Start, resume, handoff | Active goal, queue, blockers, decisions, completed work, and verification |
 | `LOG.md` | Agents and humans | Recent history, handoff | Append-only work record |
 | `BACKBURNER.md` | Humans and agents | Planning | Parked backlog |
-| `VERIFY.md` | Agents and CI | Before completion | Required evidence and commands |
 | `MAP.md` | Agents and humans | Orientation | This document graph and project navigation |
 | `DESIGN.md` | Agents and humans | Feature and architecture work | Goals, constraints, decisions |
 | `MEMORY.md` | Agents | Recall | Lean links to durable topic notes |
@@ -53,6 +50,12 @@ The ignored source PDF enters the semantic converter. Layout extraction creates 
 | System | Direction | Authentication name | Failure behavior |
 |---|---|---|---|
 | Vercel | out | local Vercel CLI session | Protected preview deployment stops on upload, build, protection, hash, or browser-smoke failure |
+
+## Current verified capability
+
+- The ignored private edition contains 21 sections, 229 page-coverage records, 945 semantic blocks, 33 cropped figures, 9 tables, 28 forms, 11 index blocks, and zero default-flow facsimiles.
+- The latest verified account-protected preview is `https://boundaries-reader-mgdlai4nb-douglas-mcgowans-projects.vercel.app`.
+- Public converter/reader tests, private semantic/package tests, three disjoint page reviews, and desktop/390px checks are the release evidence; `TASK.md` owns the current verification commands and remaining completion work.
 
 ## Ownership and concurrency
 

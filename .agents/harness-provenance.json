@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "authority": "agent-harness/portable-project-contract/v3",
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "622ec9b6115f69257cc0c92bdbb656073a095ef3fbfdf60dc15f681a4bbf539e"
+    },
+    {
+      "path": "CLAUDE.md",
+      "sha256": "336cc4fbf19beaada7ccf9986414fa91851a8d7a07dfb3ccbe800a69eed0ab49"
+    },
+    {
+      "path": ".cursor\\rules\\00-project-contract.mdc",
+      "sha256": "3cf8908f90a5293e8c2ed60018409fec1c2eef5be20b295f27e6758f51eeddfb"
+    },
+    {
+      "path": "DESIGN.md",
+      "sha256": "6e2b30a3f16c89619a80ee6614b75726d5482ce56ae836b23e5df538d1eefa8d"
+    },
+    {
+      "path": "MAP.md",
+      "sha256": "dae85576a05f43437cae5ac7c6f70d6fbadf3d1ce009ecdbccc8f9cf9253eb5d"
+    },
+    {
+      "path": "MEMORY.md",
+      "sha256": "e6dde9741fc41cd99f2de61c30df7e1fafea0cbae4b9764569089c52527408a0"
+    },
+    {
+      "path": "skills-manifest.json",
+      "sha256": "2cb2b95e9780f4e5a92bd8e143b336dd01d7a50d604b1404ef40f78f9d763f4c"
+    },
+    {
+      "path": "data-manifest.yaml",
+      "sha256": "89e04e02a9ddc23b60f9781d4f31ec5d98d06486f1a5f10928b151e3407de79f"
+    },
+    {
+      "path": "secret-manifest.json",
+      "sha256": "91c126a568bcaf68c5c976f5afa4a5cdf075449896c787eb4156a1d35b2b2826"
+    },
+    {
+      "path": "secret-manifest.md",
+      "sha256": "9065c42968f99573fbf241f6fe1f7cf7196844e6a8fa982ceb72ec4de2ed5aca"
+    },
+    {
+      "path": ".env.example",
+      "sha256": "14134afc7db61c52b05c18946421dbedd5094bd18dfcb5b3d8cb7a255da25b16"
+    },
+    {
+      "path": ".gitleaks.toml",
+      "sha256": "345a5d3c38bc709a9f0312245d6241890ea216a5c1c195acecb7700a9b6132ce"
+    },
+    {
+      "path": ".github\\workflows\\gitleaks.yml",
+      "sha256": "ea09a97ba0db1e07364e9102c3846886bef5f789dbee622d9163f8b2ff68d5d9"
+    },
+    {
+      "path": ".agents\\feedback\\FEEDBACK-LOG.md",
+      "sha256": "910701471cff1b37855724432f3f5024d1e25b002f211bd93c772ee8b731f46d"
+    },
+    {
+      "path": ".agents\\skill-pathways.json",
+      "sha256": "33d529030f3723bc185f94090cf9fcd1007646f9c7d15a76f962104aa78a3b9b"
+    }
+  ]
+}

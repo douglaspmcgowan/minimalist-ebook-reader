@@ -10,3 +10,4 @@
 - 2026-08-23 — Replaced the facsimile-led contract with semantic PDF-to-ebook intent, specification, design, reusable conversion code, reader-native renderers, and a real page-8 regression.
 - 2026-08-23 — Regenerated the private edition with 1,283 provenance-bearing blocks, 52 cropped figures, 3 tables, 15 forms, 12 index blocks, 20 linked contents entries, and zero full-page facsimiles; all package gates passed.
 - 2026-08-23 — Completed the semantic repair and release: 945 reader-native blocks, all 229 pages independently approved with zero findings, 147 automated checks passing, desktop/390px verification clean, and clean allowlisted protected preview `dpl_7hxD6eo4u971Ko7CpCs3eojXHy7a` deployed with hash parity and zero remaining bypass entries.
+- 2026-08-24 — Reopened six generic-converter gaps from independent review and migrated the repository to the current verified shared-harness baseline with schema-v2 data routing and legacy task files archived locally.
