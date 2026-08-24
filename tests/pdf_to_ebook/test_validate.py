@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 
 from tools.pdf_to_ebook.model import ExtractionRecord, Provenance, ReviewItem, SemanticBlock
+from tools.pdf_to_ebook.semantics import classify_records
 from tools.pdf_to_ebook.validate import validate_release
 
 
@@ -111,6 +112,31 @@ class ValidationTests(unittest.TestCase):
         self.assertFalse(report.releasable)
         self.assertTrue(any(item.code == "invalid-table-shape" for item in report.items))
         self.assertTrue(any(item.code == "missing-figure-alt" for item in report.items))
+
+    def test_ambiguous_headerless_table_fragment_blocks_release(self):
+        records = [
+            ExtractionRecord(
+                page=1,
+                bbox=(72, 620, 540, 720),
+                reading_order=4,
+                role_hint="table",
+                table={"caption": "Totals", "headers": ["Quarter", "Amount"], "rows": [["Q1", "$10"]]},
+                metadata={"table_header_source": "inferred-first-row"},
+            ),
+            ExtractionRecord(
+                page=2,
+                bbox=(72, 72, 540, 160),
+                reading_order=0,
+                role_hint="table",
+                table={"caption": None, "headers": ["Q2", "$12"], "rows": []},
+                metadata={"table_header_source": "inferred-first-row"},
+            ),
+        ]
+
+        report = validate_release(classify_records(records), page_count=2)
+
+        self.assertFalse(report.releasable)
+        self.assertTrue(any(item.code == "ambiguous-table-continuation" and item.page == 2 for item in report.items))
 
     def test_approved_or_low_severity_items_do_not_block_release(self):
         items = [
