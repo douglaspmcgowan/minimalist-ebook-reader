@@ -62,6 +62,45 @@ class SemanticClassificationTests(unittest.TestCase):
 
         self.assertNotIn("contents", [block.kind for block in blocks])
 
+    def test_joins_multiline_anchor_prose_and_deduplicates_its_annotation(self):
+        shared_link = {"target_page": 2, "bbox": [72, 100, 180, 144], "text": "wrapped appendix"}
+        records = [
+            ExtractionRecord(page=1, bbox=(72, 100, 180, 120), reading_order=0, text="See the wrapped", links=[shared_link]),
+            ExtractionRecord(page=1, bbox=(72, 124, 180, 144), reading_order=1, text="appendix for details.", links=[shared_link]),
+        ]
+
+        blocks = classify_records(records)
+
+        self.assertEqual(len(blocks), 1)
+        self.assertEqual(blocks[0].kind, "paragraph")
+        self.assertEqual(blocks[0].data["text"], "See the wrapped appendix for details.")
+        self.assertEqual(blocks[0].data["links"], [shared_link])
+        self.assertEqual([(source.page, source.reading_order) for source in blocks[0].provenance], [(1, 0), (1, 1)])
+
+    def test_joined_link_prose_preserves_distinct_source_annotations(self):
+        records = [
+            ExtractionRecord(
+                page=1,
+                bbox=(72, 100, 300, 120),
+                reading_order=0,
+                text="The appendix reference wraps",
+                links=[{"target_page": 2, "bbox": [72, 100, 220, 120], "text": "appendix reference"}],
+            ),
+            ExtractionRecord(
+                page=1,
+                bbox=(72, 124, 300, 144),
+                reading_order=1,
+                text="beside a separate note.",
+                links=[{"target_page": 2, "bbox": [190, 124, 280, 144], "text": "separate note"}],
+            ),
+        ]
+
+        blocks = classify_records(records)
+
+        self.assertEqual(len(blocks), 1)
+        self.assertEqual(blocks[0].kind, "paragraph")
+        self.assertEqual([link["text"] for link in blocks[0].data["links"]], ["appendix reference", "separate note"])
+
     def test_malformed_anchor_geometry_does_not_abort_classification(self):
         records = [
             ExtractionRecord(page=1, bbox=(72, 100, 100, 120), reading_order=0, text="Chap", links=[{"target_page": 2, "bbox": ["bad", 1, 2, 3]}]),

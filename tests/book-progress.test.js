@@ -156,6 +156,45 @@ test("blockHtml links each extracted ordinary anchor span to its source target",
   );
 });
 
+test("blockHtml renders one inline anchor for repeated fragments of one source annotation", () => {
+  const { blockHtml } = loadProgressApi();
+  const annotation = {
+    target: "section-2",
+    target_page: 2,
+    bbox: [72, 100, 180, 144],
+    text: "wrapped appendix",
+  };
+
+  assert.equal(
+    blockHtml({
+      kind: "paragraph",
+      data: {
+        text: "See the wrapped appendix for details.",
+        links: [annotation, { ...annotation }],
+      },
+    }),
+    '<p>See the <a class="chapter__internal-link" href="#section-2">wrapped appendix</a> for details.</p>',
+  );
+});
+
+test("blockHtml preserves distinct annotations with repeated labels", () => {
+  const { blockHtml } = loadProgressApi();
+
+  assert.equal(
+    blockHtml({
+      kind: "paragraph",
+      data: {
+        text: "Choose here or here",
+        links: [
+          { target: "section-2", target_page: 2, bbox: [72, 100, 100, 120], text: "here" },
+          { target: "section-4", target_page: 4, bbox: [140, 100, 168, 120], text: "here" },
+        ],
+      },
+    }),
+    '<p>Choose here or here <span class="chapter__internal-links" aria-label="Related source links">(<a class="chapter__internal-link" href="#section-2">here</a>, <a class="chapter__internal-link" href="#section-4">here</a>)</span></p>',
+  );
+});
+
 test("blockHtml falls back to extracted anchor labels when source offsets cannot be recovered", () => {
   const { blockHtml } = loadProgressApi();
 

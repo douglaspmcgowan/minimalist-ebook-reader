@@ -366,11 +366,23 @@ function chapterHtml(chapter) {
 
 function internalLinkTextHtml(block, text) {
   if (!Array.isArray(block.links)) return fmt(text);
+  const seenSourceAnnotations = new Set();
   const links = block.links.flatMap((link) => {
     const target = validTarget(link?.target);
     if (!target) return [];
     const sourceText = typeof link?.text === "string" ? link.text.trim() : "";
     if (!sourceText) return [];
+    const annotationId = typeof link?.annotation_id === "string" ? link.annotation_id.trim() : "";
+    const bbox = Array.isArray(link?.bbox) && link.bbox.length === 4 && link.bbox.every(Number.isFinite)
+      ? link.bbox.join(",")
+      : "";
+    const sourceKey = annotationId
+      ? `${target}\0annotation\0${annotationId}`
+      : bbox
+        ? `${target}\0bbox\0${bbox}`
+        : "";
+    if (sourceKey && seenSourceAnnotations.has(sourceKey)) return [];
+    if (sourceKey) seenSourceAnnotations.add(sourceKey);
     return [{ target, sourceText }];
   });
   if (!links.length) return fmt(text);

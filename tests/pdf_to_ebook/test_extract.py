@@ -148,6 +148,34 @@ class ExtractionTests(unittest.TestCase):
             self.assertEqual(linked.links[0]["text"], "Chapter two")
             self.assertEqual(len(linked.links[0]["bbox"]), 4)
 
+    def test_multiline_annotation_keeps_one_normalized_source_relationship(self):
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            source, pdf = self._canvas(directory, "wrapped-link.pdf")
+            pdf.drawString(72, 700, "wrapped")
+            pdf.drawString(72, 680, "appendix")
+            pdf.linkAbsolute("go", "appendix", Rect=(70, 676, 150, 712), thickness=0)
+            pdf.showPage()
+            pdf.bookmarkPage("appendix")
+            pdf.drawString(72, 700, "Destination")
+            pdf.save()
+            reader = PdfReader(source)
+            writer = PdfWriter()
+            writer.clone_document_from_reader(reader)
+            annotations = writer.pages[0]["/Annots"]
+            annotations.append(annotations[0])
+            with source.open("wb") as handle:
+                writer.write(handle)
+
+            _, records = extract_pdf(source)
+
+            linked = [record for record in records if record.links]
+            self.assertEqual([record.text for record in linked], ["wrapped", "appendix"])
+            self.assertEqual(linked[0].links, linked[1].links)
+            self.assertEqual(len(linked[0].links), 1)
+            self.assertEqual(linked[0].links[0]["text"], "wrapped appendix")
+            self.assertEqual(linked[0].links[0]["target_page"], 2)
+
     def test_extracts_real_widget_field_metadata(self):
         with tempfile.TemporaryDirectory() as temp:
             directory = Path(temp)
