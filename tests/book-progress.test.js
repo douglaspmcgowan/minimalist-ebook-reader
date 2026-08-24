@@ -125,12 +125,12 @@ test("blockHtml renders safe internal prose and heading links", () => {
   const { blockHtml } = loadProgressApi();
 
   assert.equal(
-    blockHtml({ kind: "paragraph", data: { text: "See <appendix>", links: [{ target: "section-2" }] } }),
-    '<p><a class="chapter__internal-link" href="#section-2">See &lt;appendix&gt;</a></p>',
+    blockHtml({ kind: "paragraph", data: { text: "See <appendix>", links: [{ target: "section-2", text: "<appendix>" }] } }),
+    '<p>See <a class="chapter__internal-link" href="#section-2">&lt;appendix&gt;</a></p>',
   );
   assert.equal(
-    blockHtml({ kind: "heading", data: { text: "Read next", level: 3, links: [{ target: "section-3" }] } }),
-    '<h3><a class="chapter__internal-link" href="#section-3">Read next</a></h3>',
+    blockHtml({ kind: "heading", data: { text: "Read next", level: 3, links: [{ target: "section-3", text: "next" }] } }),
+    '<h3>Read <a class="chapter__internal-link" href="#section-3">next</a></h3>',
   );
   assert.equal(
     blockHtml({ kind: "paragraph", data: { text: "Unsafe stays prose", links: [{ target: 'bad" target' }] } }),
@@ -138,7 +138,25 @@ test("blockHtml renders safe internal prose and heading links", () => {
   );
 });
 
-test("blockHtml exposes every safe ordinary link when prose has multiple targets", () => {
+test("blockHtml links each extracted ordinary anchor span to its source target", () => {
+  const { blockHtml } = loadProgressApi();
+
+  assert.equal(
+    blockHtml({
+      kind: "paragraph",
+      data: {
+        text: "Compare the first appendix and the second appendix",
+        links: [
+          { target: "section-2", text: "first appendix" },
+          { target: "section-4", text: "second appendix" },
+        ],
+      },
+    }),
+    '<p>Compare the <a class="chapter__internal-link" href="#section-2">first appendix</a> and the <a class="chapter__internal-link" href="#section-4">second appendix</a></p>',
+  );
+});
+
+test("blockHtml falls back to extracted anchor labels when source offsets cannot be recovered", () => {
   const { blockHtml } = loadProgressApi();
 
   assert.equal(
@@ -146,10 +164,20 @@ test("blockHtml exposes every safe ordinary link when prose has multiple targets
       kind: "paragraph",
       data: {
         text: "Compare both appendices",
-        links: [{ target: "section-2" }, { target: "section-4" }],
+        links: [
+          { target: "section-2", text: "First appendix" },
+          { target: "section-4", text: "Second appendix" },
+        ],
       },
     }),
-    '<p>Compare both appendices <span class="chapter__internal-links" aria-label="Linked sections">(<a class="chapter__internal-link" href="#section-2" aria-label="Go to linked section 1">1</a>, <a class="chapter__internal-link" href="#section-4" aria-label="Go to linked section 2">2</a>)</span></p>',
+    '<p>Compare both appendices <span class="chapter__internal-links" aria-label="Related source links">(<a class="chapter__internal-link" href="#section-2">First appendix</a>, <a class="chapter__internal-link" href="#section-4">Second appendix</a>)</span></p>',
+  );
+  assert.equal(
+    blockHtml({
+      kind: "paragraph",
+      data: { text: "See appendix", links: [{ target: "section-2", text: "See appendix" }] },
+    }),
+    '<p>See appendix <span class="chapter__internal-links" aria-label="Related source links">(<a class="chapter__internal-link" href="#section-2">See appendix</a>)</span></p>',
   );
 });
 

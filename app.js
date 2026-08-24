@@ -366,17 +366,55 @@ function chapterHtml(chapter) {
 
 function internalLinkTextHtml(block, text) {
   if (!Array.isArray(block.links)) return fmt(text);
-  const targets = block.links.map((link) => validTarget(link?.target)).filter(Boolean);
-  if (targets.length === 1) {
-    return `<a class="chapter__internal-link" href="#${escAttr(targets[0])}">${fmt(text)}</a>`;
+  const links = block.links.flatMap((link) => {
+    const target = validTarget(link?.target);
+    if (!target) return [];
+    const sourceText = typeof link?.text === "string" ? link.text.trim() : "";
+    return [{ target, sourceText }];
+  });
+  if (!links.length) return fmt(text);
+
+  const occupied = [];
+  const matched = [];
+  const unmatched = [];
+  for (const link of links) {
+    const pattern = link.sourceText
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+      .join("\\s+");
+    const matches = pattern ? text.matchAll(new RegExp(pattern, "giu")) : [];
+    const match = [...matches].find((candidate) => {
+      const start = candidate.index;
+      const end = start + candidate[0].length;
+      return !occupied.some(([usedStart, usedEnd]) => start < usedEnd && end > usedStart);
+    });
+    const coversWholeBlock = match && match.index === 0 && match[0].length === text.length;
+    if (!match || coversWholeBlock) {
+      unmatched.push(link);
+      continue;
+    }
+    const span = { ...link, start: match.index, end: match.index + match[0].length };
+    occupied.push([span.start, span.end]);
+    matched.push(span);
   }
-  if (targets.length > 1) {
-    const links = targets.map((target, index) => (
-      `<a class="chapter__internal-link" href="#${escAttr(target)}" aria-label="Go to linked section ${index + 1}">${index + 1}</a>`
-    )).join(", ");
-    return `${fmt(text)} <span class="chapter__internal-links" aria-label="Linked sections">(${links})</span>`;
+
+  matched.sort((left, right) => left.start - right.start);
+  let cursor = 0;
+  let html = "";
+  for (const link of matched) {
+    html += fmt(text.slice(cursor, link.start));
+    html += `<a class="chapter__internal-link" href="#${escAttr(link.target)}">${fmt(text.slice(link.start, link.end))}</a>`;
+    cursor = link.end;
   }
-  return fmt(text);
+  html += fmt(text.slice(cursor));
+
+  if (!unmatched.length) return html;
+  const fallbackLinks = unmatched.map((link) => {
+    const label = link.sourceText || link.target.replace(/[-_.:]+/g, " ");
+    return `<a class="chapter__internal-link" href="#${escAttr(link.target)}">${fmt(label)}</a>`;
+  }).join(", ");
+  return `${html} <span class="chapter__internal-links" aria-label="Related source links">(${fallbackLinks})</span>`;
 }
 
 function blockHtml(block, options = {}) {
