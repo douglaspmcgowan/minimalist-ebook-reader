@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import math
 import re
+from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable
@@ -174,13 +175,23 @@ def validate_release(
 
 
 def _validate_non_text_objects(items: list[ReviewItem], blocks: list[SemanticBlock], objects: Iterable[dict]) -> None:
-    for position, obj in enumerate(objects):
+    materialized = list(objects)
+    identifiers = Counter(
+        identifier
+        for obj in materialized
+        if isinstance(obj, dict)
+        for identifier in [_non_text_object_id(obj)]
+        if identifier
+    )
+    for identifier, count in sorted(identifiers.items()):
+        if count > 1:
+            items.append(ReviewItem("duplicate-non-text-object-id", "high", None, f"Non-text object ID {identifier!r} appears {count} times."))
+    for position, obj in enumerate(materialized):
         if not isinstance(obj, dict):
             items.append(ReviewItem("missing-non-text-object-disposition", "high", None, f"Non-text object {position} has no usable disposition."))
             continue
         page = obj.get("page")
-        raw_object_id = obj.get("id") or obj.get("object_id") or obj.get("object_name")
-        object_id = str(raw_object_id).strip() if isinstance(raw_object_id, (str, int)) and not isinstance(raw_object_id, bool) else None
+        object_id = _non_text_object_id(obj)
         page = page if isinstance(page, int) and not isinstance(page, bool) else None
         bbox = obj.get("bbox")
         try:
@@ -208,7 +219,7 @@ def _validate_non_text_objects(items: list[ReviewItem], blocks: list[SemanticBlo
             item.approved
             and item.code == "non-text-object-disposition"
             and (
-                item.details.get("object_id") == object_id
+                item.details.get("object_id") == object_id and (item.page is None or item.page == page)
                 if object_id
                 else item.page == page and _normalized_bbox(item.details.get("bbox")) == normalized_bbox
             )
@@ -216,6 +227,11 @@ def _validate_non_text_objects(items: list[ReviewItem], blocks: list[SemanticBlo
         )
         if not matched and not approved:
             items.append(ReviewItem("missing-non-text-object-disposition", "high", page if isinstance(page, int) else None, f"Non-text object {object_id or position} lacks a semantic block or approved disposition."))
+
+
+def _non_text_object_id(obj: dict) -> str | None:
+    raw = obj.get("id") or obj.get("object_id") or obj.get("object_name")
+    return str(raw).strip() if isinstance(raw, (str, int)) and not isinstance(raw, bool) and str(raw).strip() else None
 
 
 def _validate_block_links(

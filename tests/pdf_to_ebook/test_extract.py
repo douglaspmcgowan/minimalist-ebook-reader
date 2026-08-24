@@ -5,12 +5,12 @@ from pathlib import Path
 
 from PIL import Image
 from pypdf import PdfReader, PdfWriter
-from pypdf.generic import DictionaryObject, NameObject, NumberObject, TextStringObject
+from pypdf.generic import ArrayObject, DictionaryObject, NameObject, NumberObject, StreamObject, TextStringObject
 from reportlab.lib import colors
 from reportlab.pdfgen import canvas
 from reportlab.platypus import Table, TableStyle
 
-from tools.pdf_to_ebook.extract import extract_pdf
+from tools.pdf_to_ebook.extract import _widget_options, extract_pdf
 from tools.pdf_to_ebook.semantics import classify_records
 from tools.pdf_to_ebook.validate import validate_release
 
@@ -245,7 +245,7 @@ class ExtractionTests(unittest.TestCase):
             self.assertEqual(len(forms), 1)
             self.assertEqual(forms[0].form["title"], "Billing plan")
             self.assertEqual(forms[0].form["fields"][0]["label"], "Billing plan")
-            self.assertEqual(forms[0].form["fields"][0]["options"], ["annual", "monthly"])
+            self.assertEqual(forms[0].form["fields"][0]["options"], ["monthly", "annual"])
             self.assertEqual(forms[0].metadata["widget_count"], 2)
             report = validate_release(classify_records(records), page_count=1, extraction_records=records)
             self.assertTrue(report.releasable, [item.to_dict() for item in report.items])
@@ -296,6 +296,70 @@ class ExtractionTests(unittest.TestCase):
                 _, records = extract_pdf(source)
 
                 self.assertEqual([record.text for record in records], ["Alpha Beta", "Gamma Delta"], f"rotation {rotation}")
+
+    def test_rotated_two_column_rows_preserve_spans_and_enter_ambiguity_review(self):
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            raw, pdf = self._canvas(directory, "raw-columns.pdf")
+            for y, suffix in ((700, "one"), (675, "two")):
+                pdf.drawString(72, y, f"Left {suffix}")
+                pdf.drawString(330, y, f"Right {suffix}")
+            pdf.save()
+            for rotation in (90, 270):
+                reader = PdfReader(raw)
+                writer = PdfWriter()
+                writer.add_page(reader.pages[0])
+                writer.pages[0].rotate(rotation)
+                source = directory / f"columns-{rotation}.pdf"
+                with source.open("wb") as handle:
+                    writer.write(handle)
+
+                _, records = extract_pdf(source)
+
+                self.assertEqual({record.text for record in records}, {"Left one", "Left two", "Right one", "Right two"})
+                self.assertTrue(all(record.metadata.get("reading_order_ambiguous") for record in records))
+
+    def test_rotated_anchor_text_inserts_space_between_positioned_runs(self):
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            raw, pdf = self._canvas(directory, "raw-anchor-words.pdf")
+            pdf.drawString(72, 700, "Alpha")
+            pdf.drawString(150, 700, "Beta")
+            pdf.linkAbsolute("words", "target", Rect=(70, 696, 190, 712), thickness=0)
+            pdf.showPage()
+            pdf.bookmarkPage("target")
+            pdf.drawString(72, 700, "Target")
+            pdf.save()
+            reader = PdfReader(raw)
+            writer = PdfWriter()
+            writer.clone_document_from_reader(reader)
+            writer.pages[0].rotate(90)
+            source = directory / "anchor-words.pdf"
+            with source.open("wb") as handle:
+                writer.write(handle)
+
+            _, records = extract_pdf(source)
+
+            linked = next(record for record in records if record.links)
+            self.assertEqual(linked.links[0]["text"], "Alpha Beta")
+
+    def test_choice_options_use_display_labels_in_source_order(self):
+        annotation = DictionaryObject({
+            NameObject("/Opt"): ArrayObject([
+                ArrayObject([TextStringObject("b"), TextStringObject("Beta")]),
+                ArrayObject([TextStringObject("a"), TextStringObject("Alpha")]),
+            ]),
+        })
+
+        self.assertEqual(_widget_options(annotation, "choice", 0), ["Beta", "Alpha"])
+
+    def test_pushbutton_appearance_stream_is_not_treated_as_options(self):
+        normal = StreamObject()
+        normal[NameObject("/Subtype")] = NameObject("/Form")
+        normal[NameObject("/BBox")] = ArrayObject([NumberObject(0), NumberObject(0), NumberObject(20), NumberObject(20)])
+        annotation = DictionaryObject({NameObject("/AP"): DictionaryObject({NameObject("/N"): normal})})
+
+        self.assertEqual(_widget_options(annotation, "button", 1 << 16), [])
 
     def test_vector_inventory_does_not_make_enclosed_text_order_ambiguous(self):
         with tempfile.TemporaryDirectory() as temp:

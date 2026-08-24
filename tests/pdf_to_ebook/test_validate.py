@@ -249,6 +249,29 @@ class ValidationTests(unittest.TestCase):
         self.assertEqual(len(missing), 1)
         self.assertIn("vector-2", missing[0].message)
 
+    def test_duplicate_non_text_object_ids_block_release_despite_approval(self):
+        objects = [
+            {"id": "duplicate", "page": 1, "bbox": [20, 100, 30, 110]},
+            {"id": "duplicate", "page": 2, "bbox": [20, 100, 30, 110]},
+        ]
+        approval = ReviewItem(
+            "non-text-object-disposition",
+            "high",
+            1,
+            "First object is decorative.",
+            approved=True,
+            details={"object_id": "duplicate"},
+        )
+
+        report = validate_release(
+            [block(page=1), block(page=2)],
+            page_count=2,
+            non_text_objects=objects,
+            review_items=[approval],
+        )
+
+        self.assertTrue(any(item.code == "duplicate-non-text-object-id" for item in report.items))
+
     def test_non_text_semantic_coverage_must_be_on_the_inventory_page(self):
         figure = SemanticBlock(
             "figure",
