@@ -15,5 +15,5 @@
 - 2026-08-24 — Closed the final whole-branch release findings with guarded private outputs, recoverable content-addressed publication, profile-driven approvals, cross-page structures, mandatory vector dispositions, rotated multi-column links, accessible inherited widgets, source-bound progress, 114 converter and 28 reader tests, and clean independent rereviews.
 - 2026-08-24 — Completed the assembled release hardening with scaled crop-aware flow, reviewed headerless-table continuation, and deduplicated wrapped annotations; 134 converter and 30 reader tests pass.
 - 2026-08-24 — Closed the final state-scoping defects with one-pair continuation decisions, identity-bound finding approvals, and furniture-transparent semantic adjacency; 145 converter and 30 reader tests pass.
-- 2026-08-24 — Eliminated the final object/field approval-identity collision and reconciled release evidence at 147 converter and 30 reader tests.
 - 2026-08-24 — Bound ordinary reader links to extracted source labels, removed the private source digest from tracked task state, and regenerated the portable contract against the repository's `origin/main` default route.
+- 2026-08-24 — Eliminated the final object/field approval-identity collision and reconciled release evidence at 147 converter and 30 reader tests.
