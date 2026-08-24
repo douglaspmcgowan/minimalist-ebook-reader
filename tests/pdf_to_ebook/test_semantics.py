@@ -162,6 +162,18 @@ class SemanticClassificationTests(unittest.TestCase):
 
         self.assertEqual([block.data["items"] for block in blocks], [["First list item"], ["Restarted list item"]])
 
+    def test_preserves_complete_paragraphs_before_opening_quotes(self):
+        for opening_quote in ('“', '"', '‘', "'"):
+            with self.subTest(opening_quote=opening_quote):
+                records = [
+                    ExtractionRecord(page=1, bbox=(72, 100, 540, 120), reading_order=0, text="Complete sentence."),
+                    ExtractionRecord(page=1, bbox=(72, 124, 540, 144), reading_order=1, text=f"{opening_quote}New paragraph."),
+                ]
+
+                blocks = classify_records(records)
+
+                self.assertEqual([block.data["text"] for block in blocks], ["Complete sentence.", f"{opening_quote}New paragraph."])
+
 
 if __name__ == "__main__":
     unittest.main()
