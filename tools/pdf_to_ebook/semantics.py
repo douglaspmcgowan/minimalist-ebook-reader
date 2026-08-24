@@ -83,8 +83,34 @@ def _linked_contents_cluster(records: list[ExtractionRecord], start: int) -> boo
     return aligned >= 2 and len(signatures) >= 2 and len(targets) >= 2
 
 
+def _link_source_key(link: dict) -> tuple | None:
+    annotation_id = link.get("annotation_id")
+    if isinstance(annotation_id, str) and annotation_id.strip():
+        return ("annotation", annotation_id.strip())
+    bbox = link.get("bbox")
+    try:
+        geometry = tuple(float(value) for value in bbox) if isinstance(bbox, (list, tuple)) and len(bbox) == 4 else ()
+        target_page = int(link.get("target_page"))
+    except (TypeError, ValueError):
+        return None
+    return ("geometry", target_page, geometry) if geometry else None
+
+
 def _links_data(records: list[ExtractionRecord]) -> list[dict]:
-    return [dict(link) for record in records for link in record.links if isinstance(link, dict)]
+    links: list[dict] = []
+    seen: set[tuple] = set()
+    for record in records:
+        for source in record.links:
+            if not isinstance(source, dict):
+                continue
+            link = dict(source)
+            key = _link_source_key(link)
+            if key is not None and key in seen:
+                continue
+            if key is not None:
+                seen.add(key)
+            links.append(link)
+    return links
 
 
 def _text_data(records: list[ExtractionRecord]) -> dict:
@@ -135,7 +161,11 @@ def _join_records(records: list[ExtractionRecord]) -> str:
 
 
 def _is_plain_text(record: ExtractionRecord) -> bool:
-    return (record.role_hint or "") in {"", "paragraph"} and not any((record.links, record.table, record.form, record.asset)) and not _LIST.match(record.text) and not _INDEX.match(record.text)
+    links_are_joinable = not record.links or all(
+        isinstance(link, dict) and _link_source_key(link) is not None
+        for link in record.links
+    )
+    return (record.role_hint or "") in {"", "paragraph"} and links_are_joinable and not any((record.table, record.form, record.asset)) and not _LIST.match(record.text) and not _INDEX.match(record.text)
 
 
 _LETTER_WIDTH = 612.0
@@ -239,7 +269,7 @@ def _has_terminal_sentence(text: str) -> bool:
 
 
 def _can_join_paragraph_line(first: ExtractionRecord, second: ExtractionRecord) -> bool:
-    if not _is_plain_text(second):
+    if not (_is_plain_text(first) and _is_plain_text(second)):
         return False
     if second.page == first.page:
         return _same_page_flow(first, second) and not (

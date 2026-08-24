@@ -365,8 +365,9 @@ def _destination_page(reader: PdfReader, destination: Any) -> int | None:
 def _page_annotations(reader: PdfReader, page_number: int) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     links: list[dict[str, Any]] = []
     widgets: list[dict[str, Any]] = []
+    seen_link_annotations: set[str] = set()
     page = reader.pages[page_number - 1]
-    for reference in page.get("/Annots", []):
+    for annotation_number, reference in enumerate(page.get("/Annots", []), start=1):
         annotation = reference.get_object()
         bbox = _annotation_bbox(annotation, page)
         subtype = str(annotation.get("/Subtype") or "")
@@ -374,7 +375,16 @@ def _page_annotations(reader: PdfReader, page_number: int) -> tuple[list[dict[st
             action = annotation.get("/A") or {}
             target_page = _destination_page(reader, annotation.get("/Dest") or action.get("/D"))
             if target_page is not None:
-                links.append({"bbox": bbox, "target_page": target_page})
+                object_number = getattr(reference, "idnum", None)
+                annotation_id = ":".join(str(value) for value in (
+                    page_number,
+                    object_number if object_number is not None else f"direct-{annotation_number}",
+                    getattr(reference, "generation", 0),
+                ))
+                if annotation_id in seen_link_annotations:
+                    continue
+                seen_link_annotations.add(annotation_id)
+                links.append({"annotation_id": annotation_id, "bbox": bbox, "target_page": target_page})
         elif subtype == "/Widget" and bbox is not None:
             name = str(_inherited_annotation_value(annotation, "/T") or "")
             tooltip = str(_inherited_annotation_value(annotation, "/TU") or "").strip()
@@ -504,6 +514,8 @@ def extract_pdf(
             tables = page.find_tables()
             table_boxes = [tuple(float(value) for value in table.bbox) for table in tables]
             links, widgets = _page_annotations(reader, page_number)
+            for link in links:
+                link["text"] = _anchor_text(page, link["bbox"])
             for table, bbox in zip(tables, table_boxes):
                 rows = table.extract() or []
                 headers = [str(cell or "").strip() for cell in rows[0]] if rows else []
@@ -538,9 +550,9 @@ def extract_pdf(
                             "bold": any("bold" in font.lower() for font in fonts),
                             "links": [
                                 {
-                                    "target_page": link["target_page"],
+                                    **link,
                                     "bbox": list(link["bbox"]),
-                                    "text": _anchor_text(page, link["bbox"]) or text,
+                                    "text": link["text"] or text,
                                 }
                                 for link in links
                                 if _intersection(bbox, link["bbox"])
