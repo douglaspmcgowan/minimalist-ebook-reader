@@ -6,6 +6,7 @@ from pathlib import Path
 
 from .extract import extract_pdf
 from .model import stable_json_bytes
+from .package import build_reader_package
 from .semantics import classify_records
 from .validate import validate_release
 
@@ -13,13 +14,25 @@ from .validate import validate_release
 def convert(source: Path, output: Path, report_path: Path | None = None) -> int:
     preflight, records = extract_pdf(source)
     blocks = classify_records(records)
-    report = validate_release(blocks, int(preflight["source"]["page_count"]))
-    package = {
-        "schema_version": 1,
-        "source": preflight["source"],
-        "preflight": {key: value for key, value in preflight.items() if key not in {"source"}},
-        "blocks": [block.to_dict() for block in blocks],
+    page_count = int(preflight["source"]["page_count"])
+    package = build_reader_package(
+        blocks,
+        page_count,
+        preflight["source"],
+        {key: value for key, value in preflight.items() if key not in {"source"}},
+        source.stem,
+    )
+    page_targets = {
+        page: chapter["target"]
+        for chapter in package["chapters"]
+        for page in range(chapter["sourcePages"]["start"], chapter["sourcePages"]["end"] + 1)
     }
+    report = validate_release(
+        blocks,
+        page_count,
+        reader_targets={chapter["target"] for chapter in package["chapters"]},
+        page_targets=page_targets,
+    )
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_bytes(stable_json_bytes(package))
     if report_path:
