@@ -320,7 +320,7 @@ class ExtractionTests(unittest.TestCase):
             report = validate_release(classify_records(records), page_count=1, extraction_records=records)
             self.assertTrue(report.releasable, [item.to_dict() for item in report.items])
 
-    def test_widget_name_fallback_can_be_approved_by_stable_finding_id(self):
+    def test_widget_name_fallback_can_be_approved_by_stable_finding_scope(self):
         with tempfile.TemporaryDirectory() as temp:
             directory = Path(temp)
             source, pdf = self._canvas(directory, "fallback-widget.pdf")
@@ -338,7 +338,10 @@ class ExtractionTests(unittest.TestCase):
                 finding.page,
                 "Reviewed field-name fallback.",
                 approved=True,
-                details={"finding_id": finding.details["finding_id"]},
+                details={
+                    key: finding.details[key]
+                    for key in ("finding_id", "bbox", "reading_order", "field_name")
+                },
             )
 
             approved = validate_release(blocks, page_count=1, extraction_records=records, review_items=[approval])

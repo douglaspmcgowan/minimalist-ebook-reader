@@ -4,6 +4,7 @@ import argparse
 import errno
 import hashlib
 import json
+import math
 import os
 import re
 import shutil
@@ -19,7 +20,7 @@ from .extract import extract_pdf
 from .model import ExtractionRecord, ReviewItem, stable_json_bytes
 from .package import build_reader_package
 from .semantics import classify_records
-from .validate import validate_release
+from .validate import extraction_finding_id, validate_release
 
 
 @contextmanager
@@ -379,6 +380,29 @@ def _review_items(value: object, label: str) -> list[ReviewItem]:
         )
         if not scoped_disposition and (not isinstance(finding_id, str) or not re.fullmatch(r"[0-9a-fA-F]{64}", finding_id)):
             raise ValueError(f"{label} item {position} needs a stable finding_id.")
+        if isinstance(finding_id, str):
+            bbox = details.get("bbox")
+            reading_order = details.get("reading_order")
+            valid_bbox = (
+                isinstance(bbox, list)
+                and len(bbox) == 4
+                and all(isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) for value in bbox)
+            )
+            if page is None or not valid_bbox or not isinstance(reading_order, int) or isinstance(reading_order, bool) or reading_order < 0:
+                raise ValueError(f"{label} item {position} needs page, bbox, and reading_order scope.")
+            for scope_key in ("object_id", "field_name"):
+                if scope_key in details and (not isinstance(details[scope_key], str) or not details[scope_key].strip()):
+                    raise ValueError(f"{label} item {position} has an invalid {scope_key} scope.")
+            expected_finding_id = extraction_finding_id(
+                code.strip(),
+                page,
+                reading_order,
+                bbox,
+                details.get("object_id"),
+                details.get("field_name"),
+            )
+            if finding_id.lower() != expected_finding_id:
+                raise ValueError(f"{label} item {position} finding_id does not match its scope.")
         results.append(ReviewItem(code.strip(), severity, page, message.strip(), True, details))
     return results
 

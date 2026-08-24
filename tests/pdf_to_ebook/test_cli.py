@@ -381,6 +381,39 @@ class ConvertPackageTests(unittest.TestCase):
                     with self.assertRaises(ValueError):
                         _load_book_profile(path)
 
+    def test_book_profile_requires_finding_approvals_to_include_matching_scope(self):
+        finding_id = hashlib.sha256(b"uncertain-reading-order|2|3|10,20,30,40|column-2").hexdigest()
+        base = {
+            "code": "uncertain-reading-order",
+            "severity": "high",
+            "page": 2,
+            "message": "Reviewed.",
+            "approved": True,
+            "details": {
+                "finding_id": finding_id,
+                "bbox": [10, 20, 30, 40],
+                "reading_order": 3,
+                "object_id": "column-2",
+            },
+        }
+        invalid = [
+            {**base, "page": 1},
+            {**base, "code": "different-code"},
+            {**base, "details": {"finding_id": finding_id}},
+        ]
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp, "profile.json")
+            for item in invalid:
+                with self.subTest(item=item):
+                    path.write_text(json.dumps({"schema_version": 1, "review_items": [item]}), encoding="utf-8")
+                    with self.assertRaises(ValueError):
+                        _load_book_profile(path)
+
+            path.write_text(json.dumps({"schema_version": 1, "review_items": [base]}), encoding="utf-8")
+            normalized = _load_book_profile(path)
+
+        self.assertEqual(normalized["review_items"][0].details["finding_id"], finding_id)
+
     def test_book_profile_accepts_explicit_table_continuation_decision(self):
         profile = {
             "schema_version": 1,
