@@ -81,6 +81,32 @@ test("resume progress belongs only to the same book", () => {
   );
 });
 
+test("source identity separates books with identical metadata and editions", () => {
+  const { bookIdentity, resumeChapter } = loadProgressApi();
+  const shared = {
+    title: "Shared title",
+    subtitle: "Shared subtitle",
+    author: "Shared author",
+    chapters: [{}, {}],
+  };
+  const first = { ...shared, edition: "revised", reader: { source_sha256: "a".repeat(64) } };
+  const second = { ...shared, edition: "revised", reader: { source_sha256: "b".repeat(64) } };
+  const laterEdition = { ...shared, edition: "anniversary", reader: { source_sha256: "a".repeat(64) } };
+
+  assert.notEqual(bookIdentity(first), bookIdentity(second));
+  assert.notEqual(bookIdentity(first), bookIdentity(laterEdition));
+  assert.equal(resumeChapter({ bookId: bookIdentity(first), chapter: 1 }, second), null);
+  assert.equal(resumeChapter({ bookId: bookIdentity(first), chapter: 1 }, laterEdition), null);
+});
+
+test("legacy packages without source identity keep metadata-based progress", () => {
+  const { bookIdentity } = loadProgressApi();
+  assert.equal(
+    bookIdentity({ title: "Legacy", subtitle: "First", author: "Writer" }),
+    "Legacy\0First\0Writer",
+  );
+});
+
 test("blockHtml renders escaped headings and paragraphs with optional lead styling", () => {
   const { blockHtml } = loadProgressApi();
 
@@ -109,6 +135,21 @@ test("blockHtml renders safe internal prose and heading links", () => {
   assert.equal(
     blockHtml({ kind: "paragraph", data: { text: "Unsafe stays prose", links: [{ target: 'bad" target' }] } }),
     "<p>Unsafe stays prose</p>",
+  );
+});
+
+test("blockHtml exposes every safe ordinary link when prose has multiple targets", () => {
+  const { blockHtml } = loadProgressApi();
+
+  assert.equal(
+    blockHtml({
+      kind: "paragraph",
+      data: {
+        text: "Compare both appendices",
+        links: [{ target: "section-2" }, { target: "section-4" }],
+      },
+    }),
+    '<p>Compare both appendices <span class="chapter__internal-links" aria-label="Linked sections">(<a class="chapter__internal-link" href="#section-2" aria-label="Go to linked section 1">1</a>, <a class="chapter__internal-link" href="#section-4" aria-label="Go to linked section 2">2</a>)</span></p>',
   );
 });
 
@@ -399,6 +440,36 @@ test("chapterHtml keeps the lead on the first valid prose after mixed blocks", (
     '<div class="chapter__part">Before &amp; after</div><div class="chapter__no">Front Matter</div><h1 class="chapter__title">Opening &lt;section&gt;</h1><div class="chapter__rule"></div><h2>A heading</h2><blockquote class="chapter__testimonial"><p>A reader said so</p><footer>— <cite>A. Reader</cite></footer></blockquote><p class="lead">First prose</p><p>Second prose</p>',
   );
   assert.equal((html.match(/class="lead"/g) || []).length, 1);
+});
+
+test("chapterHtml exposes retained title provenance on the single opening heading", () => {
+  const { chapterHtml } = loadProgressApi();
+  const html = chapterHtml({
+    number: 1,
+    title: "Opening",
+    target: "section-1",
+    titleProvenance: [{ page: 3, bbox: [72, 80, 500, 112], reading_order: 0 }],
+    titleConfidence: 0.96,
+    blocks: [{ kind: "paragraph", data: { text: "Body" } }],
+  });
+
+  assert.match(
+    html,
+    /<h1 class="chapter__title" id="section-1" data-source-page="3" data-source-bbox="72,80,500,112" data-source-order="0" data-source-confidence="0\.96">Opening<\/h1>/,
+  );
+  assert.equal((html.match(/>Opening<\/h1>|>Opening<\/h2>/g) || []).length, 1);
+});
+
+test("chapterHtml renders retained opening-title links", () => {
+  const { chapterHtml } = loadProgressApi();
+  const html = chapterHtml({
+    title: "Opening",
+    titleLinks: [{ target: "section-2" }, { target: "section-3" }],
+    blocks: [],
+  });
+
+  assert.match(html, /href="#section-2"/);
+  assert.match(html, /href="#section-3"/);
 });
 
 test("blockHtml ignores unknown, malformed, and incomplete blocks", () => {

@@ -5,4 +5,4 @@ alwaysApply: true
 
 Read and follow repository-root `AGENTS.md`.
 
-Before editing, read `CURRENT-TASK.md`, `STATUS.md`, and recent `LOG.md`. Read `WORK_QUEUE.md` for multi-step work and `VERIFY.md` before a completion claim.
+Before editing, read `TASK.md`, recent `LOG.md`, `MAP.md`, and `BACKBURNER.md`. Use the verification commands owned by `MAP.md` before a completion claim.
