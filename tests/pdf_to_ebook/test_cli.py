@@ -60,6 +60,20 @@ class ConvertPackageTests(unittest.TestCase):
                 self.assertEqual(convert(Path(temp, "empty.pdf"), output), 2)
             self.assertEqual(output.read_text(encoding="utf-8"), '{"title":"existing"}\n')
 
+    def test_report_alias_is_rejected_without_overwriting_existing_package(self):
+        preflight = {"source": {"sha256": "synthetic", "page_count": 1, "metadata": {}}}
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            output = root / "book.json"
+            output.write_text('{"title":"existing"}\n', encoding="utf-8")
+            report_alias = root / "." / "book.json"
+            with patch("tools.pdf_to_ebook.cli.extract_pdf", return_value=(preflight, [])), patch(
+                "tools.pdf_to_ebook.cli.classify_records", return_value=[]
+            ):
+                with self.assertRaisesRegex(ValueError, "different"):
+                    convert(root / "empty.pdf", output, report_alias)
+            self.assertEqual(output.read_text(encoding="utf-8"), '{"title":"existing"}\n')
+
     def test_convert_applies_optional_release_gate_inputs(self):
         preflight = {"source": {"sha256": "synthetic", "page_count": 1, "metadata": {}}}
         blocks = [
