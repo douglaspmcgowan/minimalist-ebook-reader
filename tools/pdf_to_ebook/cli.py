@@ -20,6 +20,8 @@ def convert(
     asset_root: Path | None = None,
     expected_source_tokens: list[str] | None = None,
 ) -> int:
+    if report_path is not None and output.resolve() == report_path.resolve():
+        raise ValueError("Output and report paths must be different.")
     preflight, records = extract_pdf(source)
     blocks = classify_records(records)
     page_count = int(preflight["source"]["page_count"])
