@@ -20,10 +20,14 @@ Reproduced. `accessible_page_blocks()` flattened each front/index page into one 
 - Work state: `CURRENT-TASK.md`, `WORK_QUEUE.md`, `STATUS.md`, `LOG.md`.
 - Implementation plan: `docs/superpowers/plans/2026-08-23-semantic-pdf-to-ebook.md`.
 
-## Completion evidence
+## Reopened completion work
+
+Independent review on 2026-08-24 reproduced blocking gaps in the generic converter: geometric reading order, cross-page paragraph/list continuation, actual PDF links/widgets/figure assets, reader-loadable CLI packaging, and release validation. These fixes are being developed test-first in isolated worktrees from baseline `e97d4b1`.
+
+## Prior release evidence
 
 Final book SHA-256: `1F785731FF2F840A404573DEDA9E94CA9943DEEBD4ECD19204CF638271EC315D`. Three disjoint reviews cover pages 1–229 with zero findings. Generation, verification-only, 9 semantic quality gates, desktop/390px browser checks, protected-preview hashes, Vercel Authentication, and bypass cleanup pass.
 
 ## Next verifier
 
-None. Re-run `VERIFY.md` after any converter, profile, renderer, or book-package change.
+Run focused public regression tests after each fix lane, integrate the reviewed commits, then run all of `VERIFY.md`, Gitleaks, the project-state verifier, and a final adversarial review.
