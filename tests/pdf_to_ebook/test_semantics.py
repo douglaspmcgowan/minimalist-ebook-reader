@@ -62,6 +62,16 @@ class SemanticClassificationTests(unittest.TestCase):
 
         self.assertNotIn("contents", [block.kind for block in blocks])
 
+    def test_malformed_anchor_geometry_does_not_abort_classification(self):
+        records = [
+            ExtractionRecord(page=1, bbox=(72, 100, 100, 120), reading_order=0, text="Chap", links=[{"target_page": 2, "bbox": ["bad", 1, 2, 3]}]),
+            ExtractionRecord(page=1, bbox=(72, 124, 100, 144), reading_order=1, text="ter", links=[{"target_page": 2, "bbox": ["bad", 1, 2, 3]}]),
+        ]
+
+        blocks = classify_records(records)
+
+        self.assertNotIn("contents", [block.kind for block in blocks])
+
     def test_distant_internal_links_remain_separate_paragraphs(self):
         linked = [
             ExtractionRecord(page=1, bbox=(72, 100, 500, 120), reading_order=0, text="See chapter", links=[{"target_page": 2}]),

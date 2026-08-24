@@ -32,7 +32,10 @@ def _target_page(record: ExtractionRecord) -> int | None:
 def _link_signature(record: ExtractionRecord) -> tuple[int | None, tuple[float, ...]]:
     link = next((item for item in record.links if isinstance(item, dict)), {})
     bbox = link.get("bbox")
-    geometry = tuple(float(value) for value in bbox) if isinstance(bbox, (list, tuple)) and len(bbox) == 4 else ()
+    try:
+        geometry = tuple(float(value) for value in bbox) if isinstance(bbox, (list, tuple)) and len(bbox) == 4 else ()
+    except (TypeError, ValueError):
+        geometry = ()
     return _target_page(record), geometry
 
 

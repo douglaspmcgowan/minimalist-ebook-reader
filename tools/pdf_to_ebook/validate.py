@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import math
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -54,7 +55,16 @@ def validate_release(
     materialized = list(blocks)
     extracted = list(extraction_records)
     items = list(review_items)
-    items.extend(_extraction_review_items(extracted))
+    approved_finding_ids = {
+        item.details.get("finding_id")
+        for item in items
+        if item.approved and isinstance(item.details.get("finding_id"), str)
+    }
+    items.extend(
+        item
+        for item in _extraction_review_items(extracted)
+        if item.details.get("finding_id") not in approved_finding_ids
+    )
     covered: set[int] = set(int(page) for page in intentionally_excluded_pages)
     inventory: dict[str, int] = {}
     targets = {str(target) for target in reader_targets}
@@ -169,22 +179,28 @@ def _validate_non_text_objects(items: list[ReviewItem], blocks: list[SemanticBlo
             items.append(ReviewItem("missing-non-text-object-disposition", "high", None, f"Non-text object {position} has no usable disposition."))
             continue
         page = obj.get("page")
-        object_id = obj.get("id") or obj.get("object_id") or obj.get("object_name")
+        raw_object_id = obj.get("id") or obj.get("object_id") or obj.get("object_name")
+        object_id = str(raw_object_id).strip() if isinstance(raw_object_id, (str, int)) and not isinstance(raw_object_id, bool) else None
+        page = page if isinstance(page, int) and not isinstance(page, bool) else None
         bbox = obj.get("bbox")
         try:
             normalized_bbox = tuple(float(value) for value in bbox) if isinstance(bbox, (list, tuple)) and len(bbox) == 4 else None
+            if normalized_bbox is not None and not all(math.isfinite(value) for value in normalized_bbox):
+                normalized_bbox = None
         except (TypeError, ValueError):
             normalized_bbox = None
+        if not object_id and (page is None or normalized_bbox is None):
+            items.append(ReviewItem("missing-non-text-object-disposition", "high", page, f"Non-text object {position} lacks a stable ID or finite page geometry."))
+            continue
         matched = any(
             block.kind in {"divider", "figure"}
             and (page is None or any(source.page == page for source in block.provenance))
             and (
-                (bool(object_id) and object_id in {block.data.get("id"), block.data.get("object_id"), block.data.get("object_name")})
+                (bool(object_id) and object_id in (block.data.get("id"), block.data.get("object_id"), block.data.get("object_name")))
                 or (
                     normalized_bbox is not None
                     and any(source.page == page and tuple(source.bbox) == normalized_bbox for source in block.provenance)
                 )
-                or (not object_id and normalized_bbox is None and bbox is None)
             )
             for block in blocks
         )
@@ -194,7 +210,7 @@ def _validate_non_text_objects(items: list[ReviewItem], blocks: list[SemanticBlo
             and (
                 item.details.get("object_id") == object_id
                 if object_id
-                else item.page == page and not item.details.get("object_id")
+                else item.page == page and _normalized_bbox(item.details.get("bbox")) == normalized_bbox
             )
             for item in items
         )
@@ -217,6 +233,8 @@ def _validate_block_links(
         if not isinstance(link, dict):
             items.append(ReviewItem("unresolved-link-target", "high", page, f"Block {position} link {link_position} is invalid."))
             continue
+        if "bbox" in link and _normalized_bbox(link.get("bbox")) is None:
+            items.append(ReviewItem("invalid-link-geometry", "high", page, f"Block {position} link {link_position} has invalid source geometry."))
         target = link.get("target")
         if not target:
             try:
@@ -227,6 +245,18 @@ def _validate_block_links(
             items.append(ReviewItem("invalid-reader-target", "high", page, f"Block {position} link {link_position} has an unsafe reader target."))
         if not target or str(target) not in targets:
             items.append(ReviewItem("unresolved-link-target", "high", page, f"Block {position} link {link_position} does not resolve to a reader target."))
+
+
+def _normalized_bbox(value: object) -> tuple[float, float, float, float] | None:
+    if not isinstance(value, (list, tuple)) or len(value) != 4:
+        return None
+    try:
+        bbox = tuple(float(item) for item in value)
+    except (TypeError, ValueError):
+        return None
+    if not all(math.isfinite(item) for item in bbox):
+        return None
+    return bbox
 
 
 def _validate_assets(items: list[ReviewItem], figures: list[tuple[int | None, dict]], asset_root: str | Path | None) -> None:
@@ -281,6 +311,14 @@ def _extraction_review_items(records: Iterable[ExtractionRecord]) -> list[Review
             if isinstance(finding.get("details"), dict):
                 details.update(finding["details"])
             details.update({"bbox": list(record.bbox), "reading_order": record.reading_order})
+            identity = "|".join((
+                str(finding.get("code") or "extraction-review"),
+                str(record.page),
+                str(record.reading_order),
+                ",".join(str(value) for value in record.bbox),
+                str(details.get("object_id") or details.get("field_name") or ""),
+            ))
+            details["finding_id"] = hashlib.sha256(identity.encode("utf-8")).hexdigest()
             items.append(ReviewItem(
                 code=str(finding.get("code") or "extraction-review"),
                 severity=_extraction_review_severity(finding.get("severity")),

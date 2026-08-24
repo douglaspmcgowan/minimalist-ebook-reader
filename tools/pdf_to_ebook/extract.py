@@ -146,7 +146,21 @@ def _logical_rotated_spans(page: Any) -> list[dict[str, Any]]:
         groups[match].append(character)
     spans = []
     for group in groups:
-        text = re.sub(r"\s+", " ", "".join(str(item.get("text") or "") for item in group)).strip()
+        pieces: list[str] = []
+        previous = None
+        for character in group:
+            if previous is not None:
+                if rotation == 90:
+                    gap = float(character["top"]) - float(previous["bottom"])
+                elif rotation == 270:
+                    gap = float(previous["top"]) - float(character["bottom"])
+                else:
+                    gap = float(previous["x0"]) - float(character["x1"])
+                if gap > 1.0 and pieces and not pieces[-1].endswith(" "):
+                    pieces.append(" ")
+            pieces.append(str(character.get("text") or ""))
+            previous = character
+        text = re.sub(r"\s+", " ", "".join(pieces)).strip()
         if not text:
             continue
         spans.append({
@@ -237,6 +251,24 @@ def _annotation_group_id(annotation: Any) -> str:
     return identity or str(_inherited_annotation_value(annotation, "/T") or "anonymous")
 
 
+def _widget_options(annotation: Any, field_type: str) -> list[str]:
+    options: set[str] = set()
+    inherited = _inherited_annotation_value(annotation, "/Opt")
+    if isinstance(inherited, (list, tuple)):
+        for option in inherited:
+            value = option[0] if isinstance(option, (list, tuple)) and option else option
+            text = str(value or "").lstrip("/").strip()
+            if text:
+                options.add(text)
+    if field_type == "button":
+        appearance = annotation.get("/AP") or {}
+        normal = appearance.get("/N") if hasattr(appearance, "get") else None
+        normal = normal.get_object() if hasattr(normal, "get_object") else normal
+        if hasattr(normal, "keys"):
+            options.update(str(value).lstrip("/") for value in normal.keys() if str(value) != "/Off")
+    return sorted(option for option in options if option)
+
+
 def _destination_page(reader: PdfReader, destination: Any) -> int | None:
     if destination is None:
         return None
@@ -290,6 +322,7 @@ def _page_annotations(reader: PdfReader, page_number: int) -> tuple[list[dict[st
                     "value": str(_inherited_annotation_value(annotation, "/V") or ""),
                     "required": bool(int(_inherited_annotation_value(annotation, "/Ff") or 0) & 2),
                 },
+                "options": _widget_options(annotation, field_type),
             }
             if not tooltip:
                 widget["review"] = {
@@ -320,6 +353,18 @@ def _ambiguous_reading_order(candidates: list[dict[str, Any]], page_width: float
         for index, first in enumerate(candidates)
         for second in candidates[index + 1:]
     )
+
+
+def _reading_order_key(candidate: dict[str, Any], rotation: int) -> tuple[Any, ...]:
+    left, top, right, bottom = candidate["bbox"]
+    role = candidate.get("role_hint") or ""
+    if rotation == 90:
+        return (-right, top, -left, bottom, role)
+    if rotation == 180:
+        return (-bottom, -right, -top, -left, role)
+    if rotation == 270:
+        return (left, -bottom, right, -top, role)
+    return (top, left, bottom, right, role)
 
 
 def _figure_asset(page: Any, bbox: tuple[float, float, float, float], output_dir: Path | None, page_number: int, figure_number: int) -> tuple[str | None, dict[str, Any]]:
@@ -393,7 +438,8 @@ def extract_pdf(
                 candidates.append({"bbox": bbox, "role_hint": "table", "table": {"caption": None, "headers": headers, "rows": body}, "text": ""})
 
             words = _logical_rotated_spans(page)
-            for line in _group_words(words):
+            line_groups = [[word] for word in words] if int(getattr(page, "rotation", 0) or 0) % 360 else _group_words(words)
+            for line in line_groups:
                 for segment in _line_segments(line):
                     x0 = min(float(word["x0"]) for word in segment)
                     top = min(float(word["top"]) for word in segment)
@@ -454,16 +500,26 @@ def extract_pdf(
                 for widget in group:
                     if widget.get("review"):
                         _add_review(metadata, widget["review"])
+                fields_by_name: dict[str, dict[str, Any]] = {}
+                for widget in group:
+                    field = dict(widget["field"])
+                    key = str(field.get("name") or field.get("label") or len(fields_by_name))
+                    existing = fields_by_name.setdefault(key, field)
+                    options = sorted(set(existing.get("options", [])) | set(widget.get("options", [])))
+                    if options:
+                        existing["options"] = options
                 candidates.append({
                     "bbox": bbox,
                     "text": "",
                     "role_hint": "form",
-                    "form": {"title": first["label"], "instructions": "", "fields": [first["field"]]},
+                    "form": {"title": first["label"], "instructions": "", "fields": list(fields_by_name.values())},
                     "metadata": metadata,
                 })
 
-            ambiguous = _ambiguous_reading_order(candidates, float(page.width))
-            for order, candidate in enumerate(sorted(candidates, key=lambda item: (item["bbox"][1], item["bbox"][0], item["bbox"][3], item["bbox"][2], item.get("role_hint") or ""))):
+            reading_order_candidates = [candidate for candidate in candidates if candidate.get("role_hint") != "non_text_object"]
+            ambiguous = _ambiguous_reading_order(reading_order_candidates, float(page.width))
+            rotation = int(getattr(page, "rotation", 0) or 0) % 360
+            for order, candidate in enumerate(sorted(candidates, key=lambda item: _reading_order_key(item, rotation))):
                 metadata = dict(candidate.get("metadata") or {})
                 if ambiguous:
                     metadata["reading_order_ambiguous"] = True

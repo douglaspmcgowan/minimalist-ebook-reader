@@ -284,6 +284,24 @@ class ValidationTests(unittest.TestCase):
 
         self.assertTrue(any(item.code == "missing-non-text-object-disposition" for item in report.items))
 
+    def test_anonymous_non_text_inventory_cannot_use_page_wide_coverage(self):
+        divider = SemanticBlock(
+            "divider",
+            {},
+            [Provenance(page=1, bbox=(20, 100, 30, 110), reading_order=0)],
+            0.98,
+            ["vector-geometry"],
+        )
+
+        report = validate_release([divider], page_count=1, non_text_objects=[{"page": 1}])
+
+        self.assertTrue(any(item.code == "missing-non-text-object-disposition" for item in report.items))
+
+    def test_unhashable_non_text_identifier_becomes_blocking_disposition(self):
+        report = validate_release([block()], page_count=1, non_text_objects=[{"id": {"bad": "id"}, "page": 1}])
+
+        self.assertTrue(any(item.code == "missing-non-text-object-disposition" for item in report.items))
+
     def test_ordinary_link_targets_must_resolve(self):
         paragraph = SemanticBlock(
             "paragraph",
@@ -305,6 +323,23 @@ class ValidationTests(unittest.TestCase):
         self.assertFalse(missing.releasable)
         self.assertTrue(any(item.code == "unresolved-link-target" for item in missing.items))
         self.assertTrue(resolved.releasable, [item.to_dict() for item in resolved.items])
+
+    def test_malformed_ordinary_link_geometry_blocks_release(self):
+        paragraph = SemanticBlock(
+            "paragraph",
+            {"text": "See appendix", "links": [{"target": "section-2", "bbox": ["bad", 20, 80, 40]}]},
+            [Provenance(page=1, bbox=(10, 20, 100, 40), reading_order=0)],
+            0.98,
+            ["internal-link-target"],
+        )
+
+        report = validate_release(
+            [paragraph],
+            page_count=1,
+            reader_targets={"section-2"},
+        )
+
+        self.assertTrue(any(item.code == "invalid-link-geometry" for item in report.items))
 
     def test_asset_integrity_blocks_missing_and_mismatched_assets(self):
         figure = SemanticBlock(
