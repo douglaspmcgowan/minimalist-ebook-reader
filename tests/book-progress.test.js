@@ -179,6 +179,23 @@ test("blockHtml falls back to extracted anchor labels when source offsets cannot
     }),
     '<p>See appendix <span class="chapter__internal-links" aria-label="Related source links">(<a class="chapter__internal-link" href="#section-2">See appendix</a>)</span></p>',
   );
+  assert.equal(
+    blockHtml({
+      kind: "paragraph",
+      data: {
+        text: "Choose here or here",
+        links: [
+          { target: "section-2", text: "here" },
+          { target: "section-4", text: "here" },
+        ],
+      },
+    }),
+    '<p>Choose here or here <span class="chapter__internal-links" aria-label="Related source links">(<a class="chapter__internal-link" href="#section-2">here</a>, <a class="chapter__internal-link" href="#section-4">here</a>)</span></p>',
+  );
+  assert.equal(
+    blockHtml({ kind: "paragraph", data: { text: "Unlabeled source", links: [{ target: "section-2" }] } }),
+    "<p>Unlabeled source</p>",
+  );
 });
 
 test("blockHtml renders testimonials with safe optional attribution", () => {
@@ -491,8 +508,11 @@ test("chapterHtml exposes retained title provenance on the single opening headin
 test("chapterHtml renders retained opening-title links", () => {
   const { chapterHtml } = loadProgressApi();
   const html = chapterHtml({
-    title: "Opening",
-    titleLinks: [{ target: "section-2" }, { target: "section-3" }],
+    title: "Opening Appendix",
+    titleLinks: [
+      { target: "section-2", text: "Opening" },
+      { target: "section-3", text: "Appendix" },
+    ],
     blocks: [],
   });
 

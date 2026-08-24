@@ -370,14 +370,25 @@ function internalLinkTextHtml(block, text) {
     const target = validTarget(link?.target);
     if (!target) return [];
     const sourceText = typeof link?.text === "string" ? link.text.trim() : "";
+    if (!sourceText) return [];
     return [{ target, sourceText }];
   });
   if (!links.length) return fmt(text);
 
+  const labelCounts = links.reduce((counts, link) => {
+    const label = link.sourceText.replace(/\s+/g, " ").toLocaleLowerCase();
+    counts.set(label, (counts.get(label) || 0) + 1);
+    return counts;
+  }, new Map());
   const occupied = [];
   const matched = [];
   const unmatched = [];
   for (const link of links) {
+    const normalizedLabel = link.sourceText.replace(/\s+/g, " ").toLocaleLowerCase();
+    if (labelCounts.get(normalizedLabel) > 1) {
+      unmatched.push(link);
+      continue;
+    }
     const pattern = link.sourceText
       .split(/\s+/)
       .filter(Boolean)
@@ -410,10 +421,9 @@ function internalLinkTextHtml(block, text) {
   html += fmt(text.slice(cursor));
 
   if (!unmatched.length) return html;
-  const fallbackLinks = unmatched.map((link) => {
-    const label = link.sourceText || link.target.replace(/[-_.:]+/g, " ");
-    return `<a class="chapter__internal-link" href="#${escAttr(link.target)}">${fmt(label)}</a>`;
-  }).join(", ");
+  const fallbackLinks = unmatched.map((link) => (
+    `<a class="chapter__internal-link" href="#${escAttr(link.target)}">${fmt(link.sourceText)}</a>`
+  )).join(", ");
   return `${html} <span class="chapter__internal-links" aria-label="Related source links">(${fallbackLinks})</span>`;
 }
 
