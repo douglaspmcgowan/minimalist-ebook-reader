@@ -261,6 +261,110 @@ class SemanticClassificationTests(unittest.TestCase):
 
                 self.assertEqual([block.data["text"] for block in blocks], ["Complete sentence.", f"{opening_quote}New paragraph."])
 
+    def test_joins_split_table_across_sequential_page_edges(self):
+        records = [
+            ExtractionRecord(
+                page=1,
+                bbox=(72, 620, 540, 720),
+                reading_order=4,
+                role_hint="table",
+                table={"caption": "Quarterly totals", "headers": ["Quarter", "Amount"], "rows": [["Q1", "$10"]]},
+            ),
+            ExtractionRecord(
+                page=2,
+                bbox=(72, 72, 540, 160),
+                reading_order=0,
+                role_hint="table",
+                table={"caption": None, "headers": ["Quarter", "Amount"], "rows": [["Q2", "$12"]]},
+            ),
+        ]
+
+        blocks = classify_records(records)
+
+        self.assertEqual(len(blocks), 1)
+        self.assertEqual(blocks[0].kind, "table")
+        self.assertEqual(blocks[0].data, {"caption": "Quarterly totals", "headers": ["Quarter", "Amount"], "rows": [["Q1", "$10"], ["Q2", "$12"]]})
+        self.assertEqual([source.page for source in blocks[0].provenance], [1, 2])
+        self.assertIn("cross-page-continuation", blocks[0].evidence)
+
+    def test_preserves_distinct_tables_at_page_boundary_when_headers_differ(self):
+        records = [
+            ExtractionRecord(page=1, bbox=(72, 620, 540, 720), reading_order=4, role_hint="table", table={"caption": "Revenue", "headers": ["Quarter", "Amount"], "rows": [["Q1", "$10"]]}),
+            ExtractionRecord(page=2, bbox=(72, 72, 540, 160), reading_order=0, role_hint="table", table={"caption": "People", "headers": ["Name", "Role"], "rows": [["A", "Editor"]]}),
+        ]
+
+        blocks = classify_records(records)
+
+        self.assertEqual([block.data["caption"] for block in blocks], ["Revenue", "People"])
+
+    def test_preserves_malformed_table_fragments_for_release_validation(self):
+        records = [
+            ExtractionRecord(page=1, bbox=(72, 620, 540, 720), reading_order=4, role_hint="table", table={"caption": None, "headers": ["Quarter", "Amount"], "rows": [["Q1", "$10"]]}),
+            ExtractionRecord(page=2, bbox=(72, 72, 540, 160), reading_order=0, role_hint="table", table={"caption": None, "headers": ["Quarter", "Amount"], "rows": ["Q2, $12"]}),
+        ]
+
+        blocks = classify_records(records)
+
+        self.assertEqual(len(blocks), 2)
+        self.assertEqual(blocks[1].data["rows"], ["Q2, $12"])
+
+    def test_joins_unfinished_quotation_across_sequential_page_edges(self):
+        records = [
+            ExtractionRecord(page=1, bbox=(90, 680, 520, 720), reading_order=4, text="“A quotation carries", role_hint="quotation"),
+            ExtractionRecord(page=2, bbox=(90, 72, 520, 112), reading_order=0, text="across the page boundary.”", role_hint="quotation", metadata={"attribution": "Ada"}),
+        ]
+
+        blocks = classify_records(records)
+
+        self.assertEqual(len(blocks), 1)
+        self.assertEqual(blocks[0].data["text"], "“A quotation carries across the page boundary.”")
+        self.assertEqual(blocks[0].data["attribution"], "Ada")
+        self.assertEqual([source.page for source in blocks[0].provenance], [1, 2])
+        self.assertIn("cross-page-continuation", blocks[0].evidence)
+
+    def test_preserves_complete_quotations_across_page_boundary(self):
+        records = [
+            ExtractionRecord(page=1, bbox=(90, 680, 520, 720), reading_order=4, text="“One complete quotation.”", role_hint="quotation"),
+            ExtractionRecord(page=2, bbox=(90, 72, 520, 112), reading_order=0, text="“Another complete quotation.”", role_hint="quotation"),
+        ]
+
+        blocks = classify_records(records)
+
+        self.assertEqual([block.data["text"] for block in blocks], ["“One complete quotation.”", "“Another complete quotation.”"])
+
+    def test_joins_wrapped_large_font_heading_across_sequential_page_edges(self):
+        records = [
+            ExtractionRecord(page=1, bbox=(72, 680, 540, 720), reading_order=4, text="A Practical Guide to", font_size=20, bold=True, role_hint="heading"),
+            ExtractionRecord(page=2, bbox=(72, 72, 540, 112), reading_order=0, text="Financial Freedom", font_size=20, bold=True, role_hint="heading"),
+        ]
+
+        blocks = classify_records(records)
+
+        self.assertEqual(len(blocks), 1)
+        self.assertEqual(blocks[0].data["text"], "A Practical Guide to Financial Freedom")
+        self.assertEqual([source.page for source in blocks[0].provenance], [1, 2])
+        self.assertIn("cross-page-continuation", blocks[0].evidence)
+
+    def test_preserves_separate_complete_headings_at_page_boundary(self):
+        records = [
+            ExtractionRecord(page=1, bbox=(72, 680, 540, 720), reading_order=4, text="Part One", font_size=20, bold=True, role_hint="heading"),
+            ExtractionRecord(page=2, bbox=(72, 72, 540, 112), reading_order=0, text="Part Two", font_size=20, bold=True, role_hint="heading"),
+        ]
+
+        blocks = classify_records(records)
+
+        self.assertEqual([block.data["text"] for block in blocks], ["Part One", "Part Two"])
+
+    def test_preserves_headings_with_distinct_targets_at_page_boundary(self):
+        records = [
+            ExtractionRecord(page=1, bbox=(72, 680, 540, 720), reading_order=4, text="Terms and", font_size=20, bold=True, role_hint="heading", metadata={"target": "terms"}),
+            ExtractionRecord(page=2, bbox=(72, 72, 540, 112), reading_order=0, text="Conditions", font_size=20, bold=True, role_hint="heading", metadata={"target": "conditions"}),
+        ]
+
+        blocks = classify_records(records)
+
+        self.assertEqual([block.data["target"] for block in blocks], ["terms", "conditions"])
+
 
 if __name__ == "__main__":
     unittest.main()

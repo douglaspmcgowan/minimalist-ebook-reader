@@ -1,7 +1,8 @@
 import unittest
 
-from tools.pdf_to_ebook.model import Provenance, SemanticBlock
+from tools.pdf_to_ebook.model import ExtractionRecord, Provenance, SemanticBlock
 from tools.pdf_to_ebook.package import build_reader_package
+from tools.pdf_to_ebook.semantics import classify_records
 
 
 def block(kind, data, page, order, confidence=0.98):
@@ -15,6 +16,19 @@ def block(kind, data, page, order, confidence=0.98):
 
 
 class ReaderPackageTests(unittest.TestCase):
+    def test_wrapped_cross_page_heading_produces_one_nonempty_chapter(self):
+        records = [
+            ExtractionRecord(page=1, bbox=(72, 680, 540, 720), reading_order=4, text="A Practical Guide to", font_size=20, bold=True, role_hint="heading"),
+            ExtractionRecord(page=2, bbox=(72, 72, 540, 112), reading_order=0, text="Financial Freedom", font_size=20, bold=True, role_hint="heading"),
+            ExtractionRecord(page=2, bbox=(72, 140, 540, 160), reading_order=1, text="Start here."),
+        ]
+
+        package = build_reader_package(classify_records(records), 2, {"metadata": {"Title": "Guide"}}, {})
+
+        self.assertEqual(len(package["chapters"]), 1)
+        self.assertEqual(package["chapters"][0]["title"], "A Practical Guide to Financial Freedom")
+        self.assertEqual([block["data"]["text"] for block in package["chapters"][0]["blocks"]], ["Start here."])
+
     def build(self, blocks, page_count=2):
         return build_reader_package(
             blocks,
