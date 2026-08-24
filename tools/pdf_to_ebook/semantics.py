@@ -30,8 +30,14 @@ def _target_page(record: ExtractionRecord) -> int | None:
 
 def _list_data(records: list[ExtractionRecord]) -> dict:
     parsed = [_LIST.match(record.text) for record in records]
-    ordered = bool(parsed and all(match and match.group("marker")[0].isdigit() for match in parsed))
-    items = [match.group("text").strip() if match else record.text.strip() for record, match in zip(records, parsed)]
+    markers = [match for match in parsed if match]
+    ordered = bool(markers and all(match.group("marker")[0].isdigit() for match in markers))
+    items: list[str] = []
+    for record, match in zip(records, parsed):
+        if match or record.role_hint == "list_item":
+            items.append(match.group("text").strip() if match else record.text.strip())
+        elif items:
+            items[-1] = _join_text(items[-1], record.text)
     return {"ordered": ordered, "items": items}
 
 
@@ -40,6 +46,90 @@ def _index_entry(record: ExtractionRecord) -> dict:
     if match:
         return {"term": match.group("term").strip(), "locators": [item.strip() for item in match.group("locators").split(",")]}
     return {"term": record.text.strip(), "locators": []}
+
+
+def _join_text(first: str, second: str) -> str:
+    first = first.strip()
+    second = second.strip()
+    if first.endswith("-") and second:
+        return first[:-1] + second
+    return f"{first} {second}".strip()
+
+
+def _join_records(records: list[ExtractionRecord]) -> str:
+    text = ""
+    for record in records:
+        text = record.text.strip() if not text else _join_text(text, record.text)
+    return text
+
+
+def _is_plain_text(record: ExtractionRecord) -> bool:
+    return (record.role_hint or "") in {"", "paragraph"} and not any((record.links, record.table, record.form, record.asset)) and not _LIST.match(record.text) and not _INDEX.match(record.text)
+
+
+def _same_column(first: ExtractionRecord, second: ExtractionRecord) -> bool:
+    return abs(first.bbox[0] - second.bbox[0]) <= 12
+
+
+def _nearby_line(first: ExtractionRecord, second: ExtractionRecord) -> bool:
+    first_height = max(1.0, first.bbox[3] - first.bbox[1])
+    second_height = max(1.0, second.bbox[3] - second.bbox[1])
+    gap = second.bbox[1] - first.bbox[3]
+    return -max(first_height, second_height) <= gap <= 0.75 * max(first_height, second_height)
+
+
+def _same_page_flow(first: ExtractionRecord, second: ExtractionRecord) -> bool:
+    return _same_column(first, second) and _nearby_line(first, second)
+
+
+def _cross_page_flow(first: ExtractionRecord, second: ExtractionRecord) -> bool:
+    return (
+        second.page == first.page + 1
+        and first.bbox[3] >= 600
+        and second.bbox[1] <= 144
+    )
+
+
+def _can_join_paragraph_line(first: ExtractionRecord, second: ExtractionRecord) -> bool:
+    if not _is_plain_text(second):
+        return False
+    if second.page == first.page:
+        return _same_page_flow(first, second)
+    return (
+        _same_column(first, second)
+        and _cross_page_flow(first, second)
+        and second.text[:1].islower()
+        and not re.search(r"[.!?…:;][\"')\]]*$", first.text.strip())
+    )
+
+
+def _list_marker_family(record: ExtractionRecord) -> str | None:
+    match = _LIST.match(record.text)
+    if not match:
+        return "hint" if record.role_hint == "list_item" else None
+    return "ordered" if match.group("marker")[0].isdigit() else "unordered"
+
+
+def _can_continue_list(group: list[ExtractionRecord], candidate: ExtractionRecord) -> bool:
+    first_marker = next((record for record in group if _list_marker_family(record)), None)
+    last_marker = next((record for record in reversed(group) if _list_marker_family(record)), None)
+    if first_marker is None or last_marker is None:
+        return False
+    candidate_family = _list_marker_family(candidate)
+    if candidate_family:
+        if candidate_family == "hint":
+            return _same_page_flow(group[-1], candidate) if candidate.page == group[-1].page else _same_column(group[-1], candidate) and _cross_page_flow(group[-1], candidate)
+        if candidate_family != _list_marker_family(first_marker):
+            return False
+        return _same_page_flow(group[-1], candidate) if candidate.page == group[-1].page else _same_column(last_marker, candidate) and _cross_page_flow(group[-1], candidate)
+    if candidate.role_hint == "list_continuation":
+        return _nearby_line(group[-1], candidate) if candidate.page == group[-1].page else _cross_page_flow(group[-1], candidate)
+    return (
+        candidate.page == group[-1].page
+        and _nearby_line(group[-1], candidate)
+        and candidate.bbox[0] >= last_marker.bbox[0] + 8
+        and candidate.text[:1].islower()
+    )
 
 
 def classify_records(records: Iterable[ExtractionRecord]) -> list[SemanticBlock]:
@@ -81,15 +171,15 @@ def classify_records(records: Iterable[ExtractionRecord]) -> list[SemanticBlock]
 
         list_match = _LIST.match(record.text)
         if hint == "list_item" or list_match:
-            group = []
-            page = record.page
-            while index < len(source):
-                item = source[index]
-                if item.page != page or not (item.role_hint == "list_item" or _LIST.match(item.text)):
-                    break
-                group.append(item)
+            group = [record]
+            index += 1
+            while index < len(source) and _can_continue_list(group, source[index]):
+                group.append(source[index])
                 index += 1
-            blocks.append(_block("list", _list_data(group), group, 0.96, "list-marker", "aligned-reading-order"))
+            evidence = ["list-marker", "aligned-reading-order"]
+            if len({item.page for item in group}) > 1:
+                evidence.append("cross-page-continuation")
+            blocks.append(_block("list", _list_data(group), group, 0.96, *evidence))
             continue
 
         if hint == "table" or record.table:
@@ -118,6 +208,17 @@ def classify_records(records: Iterable[ExtractionRecord]) -> list[SemanticBlock]
             level = int(record.metadata.get("level", 1 if record.font_size >= 18 else 2))
             blocks.append(_block("heading", {"text": record.text.strip(), "level": level, "target": record.metadata.get("target")}, [record], 0.92, "typography", "role-hint" if hint else "font-size"))
         else:
-            blocks.append(_block("paragraph", {"text": record.text.strip()}, [record], 0.8, "reading-order", "text-block"))
+            group = [record]
+            index += 1
+            while index < len(source) and _can_join_paragraph_line(group[-1], source[index]):
+                group.append(source[index])
+                index += 1
+            evidence = ["reading-order", "text-block"]
+            if len(group) > 1:
+                evidence.append("geometry-line-flow")
+            if len({item.page for item in group}) > 1:
+                evidence.append("cross-page-continuation")
+            blocks.append(_block("paragraph", {"text": _join_records(group)}, group, 0.8, *evidence))
+            continue
         index += 1
     return blocks

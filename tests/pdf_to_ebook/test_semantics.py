@@ -63,6 +63,72 @@ class SemanticClassificationTests(unittest.TestCase):
                 self.assertEqual(len(source.bbox), 4)
                 self.assertGreaterEqual(source.reading_order, 0)
 
+    def test_joins_wrapped_lines_on_the_same_page(self):
+        records = [
+            ExtractionRecord(page=1, bbox=(72, 100, 540, 120), reading_order=0, text="A wrapped paragraph continues"),
+            ExtractionRecord(page=1, bbox=(72, 124, 540, 144), reading_order=1, text="on its second visual line."),
+        ]
+
+        blocks = classify_records(records)
+
+        self.assertEqual([(block.kind, block.data["text"]) for block in blocks], [("paragraph", "A wrapped paragraph continues on its second visual line.")])
+
+    def test_preserves_paragraphs_separated_by_vertical_space(self):
+        records = [
+            ExtractionRecord(page=1, bbox=(72, 100, 540, 120), reading_order=0, text="The first paragraph ends here."),
+            ExtractionRecord(page=1, bbox=(72, 148, 540, 168), reading_order=1, text="The next paragraph starts after space."),
+        ]
+
+        blocks = classify_records(records)
+
+        self.assertEqual([block.data["text"] for block in blocks], ["The first paragraph ends here.", "The next paragraph starts after space."])
+
+    def test_joins_an_unfinished_paragraph_across_sequential_pages(self):
+        records = [
+            ExtractionRecord(page=1, bbox=(72, 700, 540, 720), reading_order=4, text="A paragraph carries over"),
+            ExtractionRecord(page=2, bbox=(72, 72, 540, 92), reading_order=0, text="to the next page without a break."),
+        ]
+
+        blocks = classify_records(records)
+
+        self.assertEqual(blocks[0].data["text"], "A paragraph carries over to the next page without a break.")
+        self.assertEqual([source.page for source in blocks[0].provenance], [1, 2])
+
+    def test_continues_lists_and_wrapped_items_across_pages(self):
+        records = [
+            ExtractionRecord(page=1, bbox=(72, 680, 540, 700), reading_order=3, text="1. First item wraps"),
+            ExtractionRecord(page=1, bbox=(96, 704, 540, 724), reading_order=4, text="onto another visual line."),
+            ExtractionRecord(page=2, bbox=(72, 72, 540, 92), reading_order=0, text="2. Second item"),
+            ExtractionRecord(page=2, bbox=(96, 96, 540, 116), reading_order=1, text="continues on this page."),
+        ]
+
+        blocks = classify_records(records)
+
+        self.assertEqual(len(blocks), 1)
+        self.assertEqual(blocks[0].kind, "list")
+        self.assertEqual(blocks[0].data, {"ordered": True, "items": ["First item wraps onto another visual line.", "Second item continues on this page."]})
+        self.assertEqual([source.page for source in blocks[0].provenance], [1, 1, 2, 2])
+
+    def test_joined_paragraph_unions_source_provenance(self):
+        records = [
+            ExtractionRecord(page=4, bbox=(72, 100, 540, 120), reading_order=0, text="Provenance begins"),
+            ExtractionRecord(page=4, bbox=(72, 124, 540, 144), reading_order=1, text="with every contributing line."),
+        ]
+
+        block = classify_records(records)[0]
+
+        self.assertEqual([(source.page, source.reading_order) for source in block.provenance], [(4, 0), (4, 1)])
+
+    def test_does_not_fuse_repeated_furniture_at_page_edges(self):
+        records = [
+            ExtractionRecord(page=1, bbox=(72, 700, 540, 720), reading_order=4, text="Monthly Community Bulletin"),
+            ExtractionRecord(page=2, bbox=(72, 72, 540, 92), reading_order=0, text="Monthly Community Bulletin"),
+        ]
+
+        blocks = classify_records(records)
+
+        self.assertEqual([block.data["text"] for block in blocks], ["Monthly Community Bulletin", "Monthly Community Bulletin"])
+
 
 if __name__ == "__main__":
     unittest.main()
