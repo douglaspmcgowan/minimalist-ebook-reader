@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import re
 from collections.abc import Iterable
 
@@ -137,8 +138,63 @@ def _is_plain_text(record: ExtractionRecord) -> bool:
     return (record.role_hint or "") in {"", "paragraph"} and not any((record.links, record.table, record.form, record.asset)) and not _LIST.match(record.text) and not _INDEX.match(record.text)
 
 
+_LETTER_WIDTH = 612.0
+_LETTER_HEIGHT = 792.0
+_COLUMN_TOLERANCE_RATIO = 12.0 / _LETTER_WIDTH
+_BOTTOM_EDGE_RATIO = 600.0 / _LETTER_HEIGHT
+_TOP_EDGE_RATIO = 144.0 / _LETTER_HEIGHT
+_LAYOUT_METADATA_KEYS = frozenset({"page_width", "page_height", "page_bbox"})
+
+
+def _page_dimension(record: ExtractionRecord, key: str) -> float | None:
+    value = record.metadata.get(key)
+    if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) and value > 0:
+        return float(value)
+    return None
+
+
+def _page_bounds(record: ExtractionRecord) -> tuple[float, float, float, float] | None:
+    value = record.metadata.get("page_bbox")
+    if isinstance(value, (list, tuple)) and len(value) == 4:
+        try:
+            bounds = tuple(float(number) for number in value)
+        except (TypeError, ValueError):
+            bounds = ()
+        if len(bounds) == 4 and all(math.isfinite(number) for number in bounds) and bounds[2] > bounds[0] and bounds[3] > bounds[1]:
+            return bounds
+    width = _page_dimension(record, "page_width")
+    height = _page_dimension(record, "page_height")
+    return (0.0, 0.0, width, height) if width is not None and height is not None else None
+
+
+def _inferred_page_height(record: ExtractionRecord) -> float:
+    line_height = max(1.0, record.bbox[3] - record.bbox[1])
+    inferred_width = max(1.0, record.bbox[2] + max(0.0, record.bbox[0]))
+    return max(
+        _LETTER_HEIGHT,
+        inferred_width * (_LETTER_HEIGHT / _LETTER_WIDTH),
+        record.bbox[3] + max(line_height, record.bbox[0]),
+    )
+
+
 def _same_column(first: ExtractionRecord, second: ExtractionRecord) -> bool:
+    first_bounds = _page_bounds(first)
+    second_bounds = _page_bounds(second)
+    if first_bounds is not None and second_bounds is not None:
+        first_position = (first.bbox[0] - first_bounds[0]) / (first_bounds[2] - first_bounds[0])
+        second_position = (second.bbox[0] - second_bounds[0]) / (second_bounds[2] - second_bounds[0])
+        return abs(first_position - second_position) <= _COLUMN_TOLERANCE_RATIO
     return abs(first.bbox[0] - second.bbox[0]) <= 12
+
+
+def _same_right_edge(first: ExtractionRecord, second: ExtractionRecord) -> bool:
+    first_bounds = _page_bounds(first)
+    second_bounds = _page_bounds(second)
+    if first_bounds is not None and second_bounds is not None:
+        first_position = (first.bbox[2] - first_bounds[0]) / (first_bounds[2] - first_bounds[0])
+        second_position = (second.bbox[2] - second_bounds[0]) / (second_bounds[2] - second_bounds[0])
+        return abs(first_position - second_position) <= _COLUMN_TOLERANCE_RATIO
+    return abs(first.bbox[2] - second.bbox[2]) <= 12
 
 
 def _nearby_line(first: ExtractionRecord, second: ExtractionRecord) -> bool:
@@ -157,10 +213,15 @@ def _initial_text_character(text: str) -> str:
 
 
 def _cross_page_flow(first: ExtractionRecord, second: ExtractionRecord) -> bool:
+    fallback_height = max(_inferred_page_height(first), _inferred_page_height(second))
+    first_bounds = _page_bounds(first) or (0.0, 0.0, 1.0, fallback_height)
+    second_bounds = _page_bounds(second) or (0.0, 0.0, 1.0, fallback_height)
+    first_height = first_bounds[3] - first_bounds[1]
+    second_height = second_bounds[3] - second_bounds[1]
     return (
         second.page == first.page + 1
-        and first.bbox[3] >= 600
-        and second.bbox[1] <= 144
+        and first.bbox[3] >= first_bounds[1] + first_height * _BOTTOM_EDGE_RATIO
+        and second.bbox[1] <= second_bounds[1] + second_height * _TOP_EDGE_RATIO
     )
 
 
@@ -206,7 +267,7 @@ def _table_columns(table: dict) -> int:
 def _can_join_table(first: ExtractionRecord, second: ExtractionRecord) -> bool:
     if not isinstance(first.table, dict) or not isinstance(second.table, dict):
         return False
-    if not (_same_column(first, second) and abs(first.bbox[2] - second.bbox[2]) <= 12 and _cross_page_flow(first, second)):
+    if not (_same_column(first, second) and _same_right_edge(first, second) and _cross_page_flow(first, second)):
         return False
     first_headers = first.table.get("headers")
     second_headers = second.table.get("headers")
@@ -242,7 +303,7 @@ def _can_join_quotation(first: ExtractionRecord, second: ExtractionRecord) -> bo
 def _quotation_data(records: list[ExtractionRecord]) -> dict:
     metadata: dict = {}
     for record in records:
-        metadata.update(record.metadata)
+        metadata.update((key, value) for key, value in record.metadata.items() if key not in _LAYOUT_METADATA_KEYS)
     return {**metadata, "text": _join_records(records)}
 
 

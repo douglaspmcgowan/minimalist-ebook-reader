@@ -103,6 +103,45 @@ class ExtractionTests(unittest.TestCase):
             self.assertEqual([2], preflight["requested_pages"])
             self.assertEqual([], records)
 
+    def test_records_carry_the_page_geometry_used_by_their_bounding_boxes(self):
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            source = directory / "mixed-page-sizes.pdf"
+            pdf = canvas.Canvas(str(source), pagesize=(300, 400))
+            pdf.drawString(36, 36, "Small page")
+            pdf.showPage()
+            pdf.setPageSize((600, 800))
+            pdf.drawString(72, 72, "Large page")
+            pdf.save()
+
+            _, records = extract_pdf(source)
+
+            by_text = {record.text: record for record in records}
+            self.assertEqual(by_text["Small page"].metadata["page_width"], 300.0)
+            self.assertEqual(by_text["Small page"].metadata["page_height"], 400.0)
+            self.assertEqual(by_text["Large page"].metadata["page_width"], 600.0)
+            self.assertEqual(by_text["Large page"].metadata["page_height"], 800.0)
+
+    def test_records_carry_asymmetric_crop_bounds_in_bbox_coordinates(self):
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            source, pdf = self._canvas(directory, "uncropped.pdf")
+            pdf.drawString(72, 400, "Cropped page")
+            pdf.save()
+            reader = PdfReader(source)
+            page = reader.pages[0]
+            page.cropbox.lower_left = (50, 50)
+            page.cropbox.upper_right = (550, 650)
+            cropped = directory / "cropped.pdf"
+            writer = PdfWriter()
+            writer.add_page(page)
+            with cropped.open("wb") as handle:
+                writer.write(handle)
+
+            _, records = extract_pdf(cropped)
+
+            self.assertEqual(records[0].metadata["page_bbox"], [50.0, 142.0, 550.0, 742.0])
+
     def test_orders_text_table_and_materialized_figure_by_page_geometry(self):
         with tempfile.TemporaryDirectory() as temp:
             directory = Path(temp)

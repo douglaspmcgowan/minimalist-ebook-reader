@@ -196,6 +196,16 @@ class SemanticClassificationTests(unittest.TestCase):
         self.assertEqual(blocks[0].data, {"ordered": True, "items": ["First item wraps onto another visual line.", "Second item continues on this page."]})
         self.assertEqual([source.page for source in blocks[0].provenance], [1, 1, 2, 2])
 
+    def test_continues_list_across_proportionally_aligned_mixed_page_sizes(self):
+        records = [
+            ExtractionRecord(page=1, bbox=(36, 330, 264, 370), reading_order=4, text="1. First item", metadata={"page_width": 300, "page_height": 400}),
+            ExtractionRecord(page=2, bbox=(72, 64, 528, 104), reading_order=0, text="2. Second item", metadata={"page_width": 600, "page_height": 800}),
+        ]
+
+        blocks = classify_records(records)
+
+        self.assertEqual([block.data["items"] for block in blocks], [["First item", "Second item"]])
+
     def test_joined_paragraph_unions_source_provenance(self):
         records = [
             ExtractionRecord(page=4, bbox=(72, 100, 540, 120), reading_order=0, text="Provenance begins"),
@@ -287,6 +297,91 @@ class SemanticClassificationTests(unittest.TestCase):
         self.assertEqual([source.page for source in blocks[0].provenance], [1, 2])
         self.assertIn("cross-page-continuation", blocks[0].evidence)
 
+    def test_joins_table_across_proportionally_aligned_mixed_page_sizes(self):
+        records = [
+            ExtractionRecord(
+                page=1,
+                bbox=(36, 320, 264, 370),
+                reading_order=4,
+                role_hint="table",
+                table={"caption": "Totals", "headers": ["Quarter", "Amount"], "rows": [["Q1", "$10"]]},
+                metadata={"page_width": 300, "page_height": 400},
+            ),
+            ExtractionRecord(
+                page=2,
+                bbox=(72, 64, 528, 144),
+                reading_order=0,
+                role_hint="table",
+                table={"caption": None, "headers": ["Quarter", "Amount"], "rows": [["Q2", "$12"]]},
+                metadata={"page_width": 600, "page_height": 800},
+            ),
+        ]
+
+        blocks = classify_records(records)
+
+        self.assertEqual(len(blocks), 1)
+        self.assertEqual(blocks[0].data["rows"], [["Q1", "$10"], ["Q2", "$12"]])
+
+    def test_joins_paragraph_across_proportionally_aligned_mixed_page_sizes(self):
+        records = [
+            ExtractionRecord(page=1, bbox=(36, 330, 264, 370), reading_order=4, text="A paragraph carries", metadata={"page_width": 300, "page_height": 400}),
+            ExtractionRecord(page=2, bbox=(72, 64, 528, 104), reading_order=0, text="across differently sized pages.", metadata={"page_width": 600, "page_height": 800}),
+        ]
+
+        blocks = classify_records(records)
+
+        self.assertEqual([block.data["text"] for block in blocks], ["A paragraph carries across differently sized pages."])
+
+    def test_joins_paragraph_across_asymmetrically_cropped_page_edges(self):
+        records = [
+            ExtractionRecord(page=1, bbox=(75, 440, 525, 480), reading_order=4, text="A paragraph carries", metadata={"page_width": 600, "page_height": 800, "page_bbox": [50, 100, 550, 500]}),
+            ExtractionRecord(page=2, bbox=(75, 220, 525, 260), reading_order=0, text="across cropped page boundaries.", metadata={"page_width": 600, "page_height": 800, "page_bbox": [50, 200, 550, 600]}),
+        ]
+
+        blocks = classify_records(records)
+
+        self.assertEqual([block.data["text"] for block in blocks], ["A paragraph carries across cropped page boundaries."])
+
+    def test_preserves_paragraph_when_small_page_source_is_away_from_bottom_edge(self):
+        records = [
+            ExtractionRecord(page=1, bbox=(36, 160, 264, 200), reading_order=4, text="A paragraph carries", metadata={"page_width": 300, "page_height": 400}),
+            ExtractionRecord(page=2, bbox=(36, 36, 264, 76), reading_order=0, text="into unrelated lower-page text.", metadata={"page_width": 300, "page_height": 400}),
+        ]
+
+        blocks = classify_records(records)
+
+        self.assertEqual([block.data["text"] for block in blocks], ["A paragraph carries", "into unrelated lower-page text."])
+
+    def test_preserves_paragraph_when_small_page_candidate_is_away_from_top_edge(self):
+        records = [
+            ExtractionRecord(page=1, bbox=(36, 330, 264, 370), reading_order=4, text="A paragraph carries", metadata={"page_width": 300, "page_height": 400}),
+            ExtractionRecord(page=2, bbox=(36, 100, 264, 140), reading_order=0, text="into unrelated lower-page text.", metadata={"page_width": 300, "page_height": 400}),
+        ]
+
+        blocks = classify_records(records)
+
+        self.assertEqual([block.data["text"] for block in blocks], ["A paragraph carries", "into unrelated lower-page text."])
+
+    def test_invalid_page_dimensions_use_geometry_fallback(self):
+        records = [
+            ExtractionRecord(page=1, bbox=(72, 700, 540, 720), reading_order=4, text="A paragraph carries", metadata={"page_width": True, "page_height": True}),
+            ExtractionRecord(page=2, bbox=(72, 72, 540, 92), reading_order=0, text="across legacy synthetic records.", metadata={"page_width": True, "page_height": True}),
+        ]
+
+        blocks = classify_records(records)
+
+        self.assertEqual([block.data["text"] for block in blocks], ["A paragraph carries across legacy synthetic records."])
+
+    def test_geometry_fallback_preserves_legacy_edge_threshold_for_narrow_records(self):
+        records = [
+            ExtractionRecord(page=1, bbox=(72, 500, 300, 520), reading_order=4, text="A paragraph carries"),
+            ExtractionRecord(page=2, bbox=(72, 72, 300, 92), reading_order=0, text="into unrelated lower-page text."),
+        ]
+
+        blocks = classify_records(records)
+
+        self.assertEqual([block.data["text"] for block in blocks], ["A paragraph carries", "into unrelated lower-page text."])
+
     def test_preserves_distinct_tables_at_page_boundary_when_headers_differ(self):
         records = [
             ExtractionRecord(page=1, bbox=(72, 620, 540, 720), reading_order=4, role_hint="table", table={"caption": "Revenue", "headers": ["Quarter", "Amount"], "rows": [["Q1", "$10"]]}),
@@ -322,6 +417,16 @@ class SemanticClassificationTests(unittest.TestCase):
         self.assertEqual([source.page for source in blocks[0].provenance], [1, 2])
         self.assertIn("cross-page-continuation", blocks[0].evidence)
 
+    def test_joins_quotation_across_proportionally_aligned_mixed_page_sizes(self):
+        records = [
+            ExtractionRecord(page=1, bbox=(45, 330, 260, 370), reading_order=4, text="“A quotation carries", role_hint="quotation", metadata={"page_width": 300, "page_height": 400}),
+            ExtractionRecord(page=2, bbox=(90, 64, 520, 104), reading_order=0, text="across differently sized pages.”", role_hint="quotation", metadata={"page_width": 600, "page_height": 800, "attribution": "Ada"}),
+        ]
+
+        blocks = classify_records(records)
+
+        self.assertEqual(blocks[0].data, {"attribution": "Ada", "text": "“A quotation carries across differently sized pages.”"})
+
     def test_preserves_complete_quotations_across_page_boundary(self):
         records = [
             ExtractionRecord(page=1, bbox=(90, 680, 520, 720), reading_order=4, text="“One complete quotation.”", role_hint="quotation"),
@@ -344,6 +449,16 @@ class SemanticClassificationTests(unittest.TestCase):
         self.assertEqual(blocks[0].data["text"], "A Practical Guide to Financial Freedom")
         self.assertEqual([source.page for source in blocks[0].provenance], [1, 2])
         self.assertIn("cross-page-continuation", blocks[0].evidence)
+
+    def test_joins_heading_across_proportionally_aligned_mixed_page_sizes(self):
+        records = [
+            ExtractionRecord(page=1, bbox=(36, 330, 264, 370), reading_order=4, text="A Practical Guide to", font_size=20, bold=True, role_hint="heading", metadata={"page_width": 300, "page_height": 400}),
+            ExtractionRecord(page=2, bbox=(72, 64, 528, 104), reading_order=0, text="Financial Freedom", font_size=20, bold=True, role_hint="heading", metadata={"page_width": 600, "page_height": 800}),
+        ]
+
+        blocks = classify_records(records)
+
+        self.assertEqual([block.data["text"] for block in blocks], ["A Practical Guide to Financial Freedom"])
 
     def test_preserves_separate_complete_headings_at_page_boundary(self):
         records = [
