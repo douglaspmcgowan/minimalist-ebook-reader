@@ -47,6 +47,7 @@ taskstate/
 content-private/
 book.json
 /assets/
+**/.pdf-to-ebook-staging/
 /conversion-report.json
 *.pdf
 

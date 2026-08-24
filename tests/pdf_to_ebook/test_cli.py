@@ -14,7 +14,7 @@ from pypdf import PdfReader, PdfWriter
 from pypdf.generic import NameObject, TextStringObject
 from reportlab.pdfgen import canvas
 
-from tools.pdf_to_ebook.cli import convert
+from tools.pdf_to_ebook.cli import _load_book_profile, convert
 from tools.pdf_to_ebook.model import ExtractionRecord, Provenance, SemanticBlock
 
 
@@ -180,7 +180,10 @@ class ConvertPackageTests(unittest.TestCase):
             self.assertEqual(status, 0)
             self.assertTrue(asset.is_file())
             self.assertEqual(hashlib.sha256(asset.read_bytes()).hexdigest(), figure["data"]["sha256"])
-            self.assertEqual(package["chapters"][0]["blocks"][0]["data"]["asset"], "assets/page-0001-figure-01.png")
+            self.assertRegex(
+                package["chapters"][0]["blocks"][0]["data"]["asset"],
+                r"^assets/generations/[0-9a-f]{64}/page-0001-figure-01\.png$",
+            )
 
     def test_failed_conversion_preserves_existing_package_and_figure_assets(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -215,7 +218,167 @@ class ConvertPackageTests(unittest.TestCase):
 
             self.assertEqual(status, 0)
             self.assertFalse(stale_asset.exists())
-            self.assertEqual(list((root / "assets").iterdir()), [])
+            self.assertFalse((root / "assets").exists() and any((root / "assets").iterdir()))
+
+    def test_figureless_release_does_not_publish_unreferenced_staged_private_assets(self):
+        preflight = {"source": {"sha256": "synthetic", "page_count": 1, "metadata": {}}}
+        blocks = [semantic_block("paragraph", {"text": "No released figure."}, 1, 0)]
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+
+            def stage_unreferenced_asset(_source, asset_output_dir=None):
+                asset = Path(asset_output_dir, "assets", "private-source-crop.png")
+                asset.parent.mkdir()
+                asset.write_bytes(b"private")
+                return preflight, []
+
+            with patch("tools.pdf_to_ebook.cli.extract_pdf", side_effect=stage_unreferenced_asset), patch(
+                "tools.pdf_to_ebook.cli.classify_records", return_value=blocks
+            ):
+                self.assertEqual(convert(root / "source.pdf", root / "book.json", asset_root=root), 0)
+
+            self.assertFalse((root / "assets").exists() and any((root / "assets").iterdir()))
+
+    def test_package_uses_content_addressed_generation_assets(self):
+        preflight = {"source": {"sha256": "synthetic", "page_count": 1, "metadata": {}}}
+        content = b"chart"
+        blocks = [semantic_block(
+            "figure",
+            {"asset": "assets/chart.png", "alt": "Chart", "sha256": hashlib.sha256(content).hexdigest()},
+            1,
+            0,
+        )]
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+
+            def materialize(_source, asset_output_dir=None):
+                asset = Path(asset_output_dir, "assets", "chart.png")
+                asset.parent.mkdir()
+                asset.write_bytes(content)
+                return preflight, []
+
+            with patch("tools.pdf_to_ebook.cli.extract_pdf", side_effect=materialize), patch(
+                "tools.pdf_to_ebook.cli.classify_records", return_value=blocks
+            ):
+                self.assertEqual(convert(root / "source.pdf", root / "book.json", asset_root=root), 0)
+
+            package = json.loads((root / "book.json").read_text(encoding="utf-8"))
+            figure = next(block for block in package["blocks"] if block["kind"] == "figure")
+            asset_path = figure["data"]["asset"]
+            self.assertRegex(asset_path, r"^assets/generations/[0-9a-f]{64}/chart\.png$")
+            self.assertEqual((root / asset_path).read_bytes(), content)
+            self.assertEqual(package["chapters"][0]["blocks"][0]["data"]["asset"], asset_path)
+
+    def test_package_swap_failure_keeps_old_package_assets_and_success_report_consistent(self):
+        preflight = {"source": {"sha256": "new", "page_count": 1, "metadata": {}}}
+        new_content = b"new"
+        blocks = [semantic_block(
+            "figure",
+            {"asset": "assets/figure.bin", "alt": "New", "sha256": hashlib.sha256(new_content).hexdigest()},
+            1,
+            0,
+        )]
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            output = root / "book.json"
+            report_path = root / "report.json"
+            old_asset = root / "assets" / "generations" / ("a" * 64) / "old.bin"
+            old_asset.parent.mkdir(parents=True)
+            old_asset.write_bytes(b"old")
+            old_package = {"blocks": [{"kind": "figure", "data": {"asset": old_asset.relative_to(root).as_posix()}}]}
+            output.write_bytes(json.dumps(old_package).encode("utf-8"))
+            report_path.write_text(json.dumps({"releasable": True, "publication": {"package_sha256": hashlib.sha256(output.read_bytes()).hexdigest()}}), encoding="utf-8")
+
+            def materialize(_source, asset_output_dir=None):
+                asset = Path(asset_output_dir, "assets", "figure.bin")
+                asset.parent.mkdir()
+                asset.write_bytes(new_content)
+                return preflight, []
+
+            real_replace = os.replace
+
+            def fail_package_swap(source_path, destination_path):
+                if Path(destination_path) == output:
+                    raise OSError("synthetic package swap failure")
+                return real_replace(source_path, destination_path)
+
+            with patch("tools.pdf_to_ebook.cli.extract_pdf", side_effect=materialize), patch(
+                "tools.pdf_to_ebook.cli.classify_records", return_value=blocks
+            ), patch("tools.pdf_to_ebook.cli.os.replace", side_effect=fail_package_swap):
+                with self.assertRaisesRegex(OSError, "synthetic package"):
+                    convert(root / "source.pdf", output, report_path=report_path, asset_root=root)
+
+            self.assertEqual(json.loads(output.read_text(encoding="utf-8")), old_package)
+            self.assertEqual(old_asset.read_bytes(), b"old")
+            self.assertFalse(report_path.exists())
+
+    def test_success_report_is_written_after_matching_package_commit(self):
+        preflight = {"source": {"sha256": "synthetic", "page_count": 1, "metadata": {}}}
+        blocks = [semantic_block("paragraph", {"text": "Published."}, 1, 0)]
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            output = root / "book.json"
+            report_path = root / "report.json"
+            with patch("tools.pdf_to_ebook.cli.extract_pdf", return_value=(preflight, [])), patch(
+                "tools.pdf_to_ebook.cli.classify_records", return_value=blocks
+            ):
+                self.assertEqual(convert(root / "source.pdf", output, report_path=report_path, asset_root=root), 0)
+
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+            self.assertTrue(report["releasable"])
+            self.assertEqual(report["publication"]["package_sha256"], hashlib.sha256(output.read_bytes()).hexdigest())
+
+    def test_completed_conversion_preserves_shared_guarded_staging_parent_for_sibling_outputs(self):
+        preflight = {"source": {"sha256": "synthetic", "page_count": 1, "metadata": {}}}
+        blocks = [semantic_block("paragraph", {"text": "Published."}, 1, 0)]
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            with patch("tools.pdf_to_ebook.cli.extract_pdf", return_value=(preflight, [])), patch(
+                "tools.pdf_to_ebook.cli.classify_records", return_value=blocks
+            ):
+                self.assertEqual(convert(root / "source.pdf", root / "book.json"), 0)
+            staging_parent = root / ".pdf-to-ebook-staging"
+            self.assertTrue(staging_parent.is_dir())
+            self.assertEqual(list(staging_parent.iterdir()), [])
+
+    def test_book_profile_applies_record_overrides_and_release_decisions(self):
+        preflight = {"source": {"sha256": "synthetic", "page_count": 2, "metadata": {}}}
+        record = ExtractionRecord(page=1, bbox=(10, 20, 300, 40), reading_order=0, text="Chapter", role_hint="paragraph")
+        profile = {
+            "schema_version": 1,
+            "record_overrides": [{"page": 1, "reading_order": 0, "set": {"role_hint": "heading", "metadata": {"level": 1}}}],
+            "review_items": [],
+            "intentionally_excluded_pages": [2],
+            "non_text_objects": [],
+            "expected_source_tokens": ["Chapter"],
+        }
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            with patch("tools.pdf_to_ebook.cli.extract_pdf", return_value=(preflight, [record])):
+                self.assertEqual(convert(root / "source.pdf", root / "book.json", book_profile=profile), 0)
+            package = json.loads((root / "book.json").read_text(encoding="utf-8"))
+
+        self.assertEqual(package["chapters"][0]["title"], "Chapter")
+        self.assertEqual(package["chapters"][0]["titleProvenance"][0]["page"], 1)
+
+    def test_book_profile_schema_rejects_unsafe_or_ambiguous_values(self):
+        invalid_profiles = [
+            [],
+            {"schema_version": 2},
+            {"schema_version": 1, "unknown": []},
+            {"schema_version": 1, "intentionally_excluded_pages": [True]},
+            {"schema_version": 1, "review_items": [{"code": "x", "severity": "high", "approved": True}]},
+            {"schema_version": 1, "record_overrides": [{"page": 1, "reading_order": 0, "set": {"asset": "private.bin"}}]},
+            {"schema_version": 1, "record_overrides": [{"page": 1, "reading_order": 0, "set": {"metadata": {"review": []}}}]},
+            {"schema_version": 1, "record_overrides": [{"page": 1, "reading_order": 0, "set": {"text": None}}]},
+        ]
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp, "profile.json")
+            for value in invalid_profiles:
+                with self.subTest(value=value):
+                    path.write_text(json.dumps(value), encoding="utf-8")
+                    with self.assertRaises(ValueError):
+                        _load_book_profile(path)
 
     def test_two_processes_cannot_publish_a_package_with_another_conversions_assets(self):
         worker_source = r'''
@@ -252,7 +415,7 @@ def extract(_source, asset_output_dir=None):
 real_replace = os.replace
 def replace_with_first_writer_pause(source, destination):
     result = real_replace(source, destination)
-    if label == "first" and Path(destination) == root / "assets":
+    if label == "first" and Path(destination).parent == root / "assets" / "generations":
         signal.write_text("promoted", encoding="utf-8")
         time.sleep(1.5)
     return result
@@ -304,6 +467,94 @@ print(json.dumps({"label": label, "status": status}))
             figure = next(block for block in package["blocks"] if block["kind"] == "figure")
             live_asset = root / figure["data"]["asset"]
             self.assertEqual(hashlib.sha256(live_asset.read_bytes()).hexdigest(), figure["data"]["sha256"])
+
+    def test_process_termination_after_figureless_package_swap_is_guarded_and_recovered(self):
+        worker_source = r'''
+import sys
+import time
+from pathlib import Path
+from unittest.mock import patch
+
+from tools.pdf_to_ebook.cli import _cleanup_managed_assets, convert
+from tools.pdf_to_ebook.model import Provenance, SemanticBlock
+
+root = Path(sys.argv[1])
+signal = Path(sys.argv[2])
+preflight = {"source": {"sha256": "new", "page_count": 1, "metadata": {}}}
+blocks = [SemanticBlock(
+    kind="paragraph",
+    data={"text": "Figureless replacement."},
+    provenance=[Provenance(page=1, bbox=(10, 20, 30, 40), reading_order=0)],
+    confidence=0.98,
+    evidence=["termination-test"],
+)]
+
+def extract(_source, asset_output_dir=None):
+    return preflight, []
+
+cleanup_calls = 0
+def pause_cleanup(asset_root, generation):
+    global cleanup_calls
+    cleanup_calls += 1
+    if cleanup_calls == 1:
+        return _cleanup_managed_assets(asset_root, generation)
+    signal.write_text("package-swapped", encoding="utf-8")
+    time.sleep(30)
+
+with patch("tools.pdf_to_ebook.cli.extract_pdf", side_effect=extract), patch(
+    "tools.pdf_to_ebook.cli.classify_records", return_value=blocks
+), patch("tools.pdf_to_ebook.cli._cleanup_managed_assets", side_effect=pause_cleanup):
+    convert(root / "source.pdf", root / "book.json", report_path=root / "report.json", asset_root=root)
+'''
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            old_generation = "a" * 64
+            old_asset = root / "assets" / "generations" / old_generation / "old.bin"
+            old_asset.parent.mkdir(parents=True)
+            old_asset.write_bytes(b"old-private")
+            (root / "book.json").write_text(json.dumps({
+                "schema_version": 1,
+                "blocks": [{"kind": "figure", "data": {"asset": f"assets/generations/{old_generation}/old.bin"}}],
+            }), encoding="utf-8")
+            worker = root / "termination-worker.py"
+            worker.write_text(worker_source, encoding="utf-8")
+            signal = root / "package-swapped"
+            repository = Path(__file__).resolve().parents[2]
+            environment = os.environ.copy()
+            environment["PYTHONPATH"] = str(repository)
+            process = subprocess.Popen(
+                [sys.executable, str(worker), str(root), str(signal)],
+                cwd=repository,
+                env=environment,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            self.addCleanup(self._terminate_process, process)
+            deadline = time.monotonic() + 10
+            while not signal.exists() and process.poll() is None and time.monotonic() < deadline:
+                time.sleep(0.02)
+            self.assertTrue(signal.exists(), "worker never reached post-swap cleanup")
+            process.kill()
+            _, stderr = process.communicate(timeout=10)
+            self.assertNotEqual(process.returncode, 0, stderr.decode("utf-8", errors="replace"))
+
+            package = json.loads((root / "book.json").read_text(encoding="utf-8"))
+            self.assertFalse(any(block["kind"] == "figure" for block in package["blocks"]))
+            self.assertEqual(old_asset.read_bytes(), b"old-private")
+            self.assertFalse((root / "report.json").exists())
+            guards = [
+                (repository / ".gitignore").read_text(encoding="utf-8"),
+                (repository / ".vercelignore").read_text(encoding="utf-8"),
+            ]
+            self.assertTrue(all("**/.pdf-to-ebook-staging/" in guard for guard in guards))
+
+            recovery_blocks = [semantic_block("paragraph", {"text": "Recovered."}, 1, 0)]
+            with patch("tools.pdf_to_ebook.cli.extract_pdf", return_value=(
+                {"source": {"sha256": "recovered", "page_count": 1, "metadata": {}}}, []
+            )), patch("tools.pdf_to_ebook.cli.classify_records", return_value=recovery_blocks):
+                self.assertEqual(convert(root / "source.pdf", root / "book.json", report_path=root / "report.json", asset_root=root), 0)
+            self.assertFalse(old_asset.exists())
+            self.assertFalse((root / "assets").exists() and any((root / "assets").iterdir()))
 
     @staticmethod
     def _terminate_process(process: subprocess.Popen) -> None:
