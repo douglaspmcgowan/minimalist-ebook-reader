@@ -51,6 +51,17 @@ class SemanticClassificationTests(unittest.TestCase):
         self.assertEqual(blocks[0].kind, "contents")
         self.assertEqual([entry["target_page"] for entry in blocks[0].data["entries"]], [2, 3])
 
+    def test_fragments_from_one_anchor_do_not_become_contents(self):
+        shared_link = {"target_page": 2, "bbox": [72, 100, 180, 120]}
+        records = [
+            ExtractionRecord(page=1, bbox=(72, 100, 100, 120), reading_order=0, text="Chap", links=[shared_link]),
+            ExtractionRecord(page=1, bbox=(72, 124, 100, 144), reading_order=1, text="ter", links=[shared_link]),
+        ]
+
+        blocks = classify_records(records)
+
+        self.assertNotIn("contents", [block.kind for block in blocks])
+
     def test_distant_internal_links_remain_separate_paragraphs(self):
         linked = [
             ExtractionRecord(page=1, bbox=(72, 100, 500, 120), reading_order=0, text="See chapter", links=[{"target_page": 2}]),
