@@ -4,7 +4,8 @@ import hashlib
 from pathlib import Path
 
 from PIL import Image
-from pypdf import PdfWriter
+from pypdf import PdfReader, PdfWriter
+from pypdf.generic import DictionaryObject, NameObject, NumberObject, TextStringObject
 from reportlab.lib import colors
 from reportlab.pdfgen import canvas
 from reportlab.platypus import Table, TableStyle
@@ -21,6 +22,53 @@ class ExtractionTests(unittest.TestCase):
     def _canvas(self, directory: Path, name: str = "fixture.pdf") -> tuple[Path, canvas.Canvas]:
         source = directory / name
         return source, canvas.Canvas(str(source), pagesize=(612, 792))
+
+    def _linked_pdf(self, directory: Path, name: str, rotation: int, cropped: bool = False) -> Path:
+        original, pdf = self._canvas(directory, f"raw-{name}")
+        pdf.drawString(72, 700, "Rotated link")
+        pdf.linkAbsolute("go", "target", Rect=(70, 696, 150, 712), thickness=0)
+        pdf.showPage()
+        pdf.bookmarkPage("target")
+        pdf.drawString(72, 700, "Destination")
+        pdf.save()
+        reader = PdfReader(original)
+        writer = PdfWriter()
+        for page_number, page in enumerate(reader.pages):
+            if page_number == 0:
+                page.rotate(rotation)
+                if cropped:
+                    page.cropbox.lower_left = (50, 50)
+                    page.cropbox.upper_right = (562, 742)
+            writer.add_page(page)
+        source = directory / name
+        with source.open("wb") as handle:
+            writer.write(handle)
+        return source
+
+    def _nested_widget_pdf(self, directory: Path) -> Path:
+        source, pdf = self._canvas(directory)
+        pdf.drawString(72, 700, "Nested widget")
+        pdf.acroForm.textfield(name="original", x=72, y=640, width=180, height=24, borderWidth=1)
+        pdf.showPage()
+        pdf.save()
+        reader = PdfReader(source)
+        writer = PdfWriter()
+        writer.clone_document_from_reader(reader)
+        widget = writer.pages[0]["/Annots"][0].get_object()
+        parent = DictionaryObject({
+            NameObject("/FT"): NameObject("/Tx"),
+            NameObject("/T"): TextStringObject("parent-name"),
+            NameObject("/V"): TextStringObject("parent-value"),
+            NameObject("/Ff"): NumberObject(2),
+        })
+        widget[NameObject("/Parent")] = writer._add_object(parent)
+        widget[NameObject("/T")] = TextStringObject("child-name")
+        widget[NameObject("/V")] = TextStringObject("child-value")
+        del widget[NameObject("/FT")]
+        del widget[NameObject("/Ff")]
+        with source.open("wb") as handle:
+            writer.write(handle)
+        return source
 
     def test_bounded_extraction_skips_full_document_preflight(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -104,7 +152,7 @@ class ExtractionTests(unittest.TestCase):
 
             figure = next(record for record in records if record.role_hint == "figure")
             self.assertIsNone(figure.asset)
-            self.assertEqual("high", figure.metadata["review"]["severity"])
+            self.assertEqual(["figure-asset-unmaterialized"], [item["code"] for item in figure.metadata["review"]])
 
     def test_marks_two_column_layout_as_ambiguous_for_review(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -119,7 +167,49 @@ class ExtractionTests(unittest.TestCase):
 
             self.assertTrue(records)
             self.assertTrue(all(record.metadata.get("reading_order_ambiguous") for record in records))
-            self.assertEqual("high", records[0].metadata["review"]["severity"])
+            self.assertEqual(["uncertain-reading-order"], [item["code"] for item in records[0].metadata["review"]])
+
+    def test_preserves_figure_and_reading_order_review_evidence(self):
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            source, pdf = self._canvas(directory)
+            pdf.drawImage(str(self._image(directory)), 72, 430, width=40, height=30)
+            for x, prefix in ((72, "Left"), (330, "Right")):
+                pdf.drawString(x, 700, f"{prefix} one")
+                pdf.drawString(x, 675, f"{prefix} two")
+            pdf.save()
+
+            _, records = extract_pdf(source)
+
+            figure = next(record for record in records if record.role_hint == "figure")
+            self.assertEqual(
+                ["figure-asset-unmaterialized", "uncertain-reading-order"],
+                [item["code"] for item in figure.metadata["review"]],
+            )
+            self.assertTrue(all(item["severity"] == "high" for item in figure.metadata["review"]))
+
+    def test_extracts_links_after_rotation_and_cropbox_transform(self):
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            for rotation in (0, 90, 180, 270):
+                source = self._linked_pdf(directory, f"rotation-{rotation}.pdf", rotation, cropped=True)
+
+                _, records = extract_pdf(source)
+
+                self.assertTrue(
+                    any(record.links == [{"target_page": 2}] for record in records),
+                    f"rotation {rotation}",
+                )
+
+    def test_inherits_widget_attributes_with_child_precedence(self):
+        with tempfile.TemporaryDirectory() as temp:
+            _, records = extract_pdf(self._nested_widget_pdf(Path(temp)))
+
+            widget = next(record for record in records if record.role_hint == "form")
+            self.assertEqual(
+                [{"name": "child-name", "type": "text", "value": "child-value", "required": True}],
+                widget.form["fields"],
+            )
 
 
 if __name__ == "__main__":

@@ -79,12 +79,48 @@ def _intersection(first: tuple[float, float, float, float], second: tuple[float,
     return first[0] < second[2] and second[0] < first[2] and first[1] < second[3] and second[1] < first[3]
 
 
-def _annotation_bbox(annotation: Any, page_height: float) -> tuple[float, float, float, float] | None:
+def _annotation_bbox(annotation: Any, page: Any) -> tuple[float, float, float, float] | None:
     rectangle = annotation.get("/Rect")
     if not rectangle or len(rectangle) != 4:
         return None
     left, bottom, right, top = (float(value) for value in rectangle)
-    return (min(left, right), page_height - max(bottom, top), max(left, right), page_height - min(bottom, top))
+    crop = page.cropbox
+    crop_left, crop_bottom, crop_right, crop_top = (float(value) for value in crop)
+    left, bottom, right, top = max(min(left, right), crop_left), max(min(bottom, top), crop_bottom), min(max(left, right), crop_right), min(max(bottom, top), crop_top)
+    if left >= right or bottom >= top:
+        return None
+    media_left, media_bottom, media_right, media_top = (float(value) for value in page.mediabox)
+    width, height = media_right - media_left, media_top - media_bottom
+    rotation = int(page.get("/Rotate") or 0) % 360
+
+    def transform(x: float, y: float) -> tuple[float, float]:
+        x, y = x - media_left, y - media_bottom
+        if rotation == 90:
+            return y, x
+        if rotation == 180:
+            return width - x, y
+        if rotation == 270:
+            return height - y, width - x
+        return x, height - y
+
+    points = [transform(x, y) for x in (left, right) for y in (bottom, top)]
+    return (min(x for x, _ in points), min(y for _, y in points), max(x for x, _ in points), max(y for _, y in points))
+
+
+def _inherited_annotation_value(annotation: Any, key: str) -> Any:
+    current = annotation
+    seen: set[tuple[int | None, int | None]] = set()
+    while current is not None:
+        reference = getattr(current, "indirect_reference", None)
+        identity = (getattr(reference, "idnum", None), getattr(reference, "generation", None))
+        if identity in seen:
+            return None
+        seen.add(identity)
+        if key in current:
+            return current[key]
+        parent = current.get("/Parent")
+        current = parent.get_object() if parent is not None else None
+    return None
 
 
 def _destination_page(reader: PdfReader, destination: Any) -> int | None:
@@ -110,12 +146,13 @@ def _destination_page(reader: PdfReader, destination: Any) -> int | None:
     return None
 
 
-def _page_annotations(reader: PdfReader, page_number: int, page_height: float) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+def _page_annotations(reader: PdfReader, page_number: int) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     links: list[dict[str, Any]] = []
     widgets: list[dict[str, Any]] = []
-    for reference in reader.pages[page_number - 1].get("/Annots", []):
+    page = reader.pages[page_number - 1]
+    for reference in page.get("/Annots", []):
         annotation = reference.get_object()
-        bbox = _annotation_bbox(annotation, page_height)
+        bbox = _annotation_bbox(annotation, page)
         subtype = str(annotation.get("/Subtype") or "")
         if subtype == "/Link" and bbox is not None:
             action = annotation.get("/A") or {}
@@ -123,15 +160,16 @@ def _page_annotations(reader: PdfReader, page_number: int, page_height: float) -
             if target_page is not None:
                 links.append({"bbox": bbox, "target_page": target_page})
         elif subtype == "/Widget" and bbox is not None:
-            field_type = {"/Tx": "text", "/Btn": "button", "/Ch": "choice", "/Sig": "signature"}.get(str(annotation.get("/FT") or ""), "unknown")
+            name = str(_inherited_annotation_value(annotation, "/T") or "")
+            field_type = {"/Tx": "text", "/Btn": "button", "/Ch": "choice", "/Sig": "signature"}.get(str(_inherited_annotation_value(annotation, "/FT") or ""), "unknown")
             widgets.append({
                 "bbox": bbox,
-                "name": str(annotation.get("/T") or ""),
+                "name": name,
                 "field": {
-                    "name": str(annotation.get("/T") or ""),
+                    "name": name,
                     "type": field_type,
-                    "value": str(annotation.get("/V") or ""),
-                    "required": bool(int(annotation.get("/Ff") or 0) & 2),
+                    "value": str(_inherited_annotation_value(annotation, "/V") or ""),
+                    "required": bool(int(_inherited_annotation_value(annotation, "/Ff") or 0) & 2),
                 },
             })
     return links, widgets
@@ -161,7 +199,7 @@ def _figure_asset(page: Any, bbox: tuple[float, float, float, float], output_dir
     filename = Path("assets") / f"page-{page_number:04d}-figure-{figure_number:02d}.png"
     metadata: dict[str, Any] = {}
     if output_dir is None:
-        metadata["review"] = {"code": "figure-asset-unmaterialized", "severity": "high", "message": "Figure requires an explicit asset output directory."}
+        metadata["review"] = [{"code": "figure-asset-unmaterialized", "severity": "high", "message": "Figure requires an explicit asset output directory."}]
         return None, metadata
     try:
         destination = output_dir / filename
@@ -170,8 +208,15 @@ def _figure_asset(page: Any, bbox: tuple[float, float, float, float], output_dir
         metadata["asset_sha256"] = _sha256(destination)
         return filename.as_posix(), metadata
     except (OSError, ValueError) as error:
-        metadata["review"] = {"code": "figure-asset-unmaterialized", "severity": "high", "message": str(error)}
+        metadata["review"] = [{"code": "figure-asset-unmaterialized", "severity": "high", "message": str(error)}]
         return None, metadata
+
+
+def _add_review(metadata: dict[str, Any], review: dict[str, Any]) -> None:
+    existing = metadata.get("review", [])
+    items = [existing] if isinstance(existing, dict) else list(existing)
+    items.append(review)
+    metadata["review"] = sorted(items, key=lambda item: (str(item.get("code") or ""), str(item.get("severity") or ""), str(item.get("message") or "")))
 
 
 def extract_pdf(
@@ -197,7 +242,7 @@ def extract_pdf(
             candidates: list[dict[str, Any]] = []
             tables = page.find_tables()
             table_boxes = [tuple(float(value) for value in table.bbox) for table in tables]
-            links, widgets = _page_annotations(reader, page_number, float(page.height))
+            links, widgets = _page_annotations(reader, page_number)
             for table, bbox in zip(tables, table_boxes):
                 rows = table.extract() or []
                 headers = [str(cell or "").strip() for cell in rows[0]] if rows else []
@@ -246,11 +291,11 @@ def extract_pdf(
                 metadata = dict(candidate.get("metadata") or {})
                 if ambiguous:
                     metadata["reading_order_ambiguous"] = True
-                    metadata["review"] = {
+                    _add_review(metadata, {
                         "code": "uncertain-reading-order",
                         "severity": "high",
                         "message": "Overlapping or multi-column geometry requires review before release.",
-                    }
+                    })
                 records.append(ExtractionRecord(
                     page_number,
                     candidate["bbox"],
