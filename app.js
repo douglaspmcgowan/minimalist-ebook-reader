@@ -348,6 +348,14 @@ function chapterHtml(chapter) {
   return html;
 }
 
+function internalLinkTextHtml(block, text) {
+  if (!Array.isArray(block.links) || block.links.length !== 1) return fmt(text);
+  const target = validTarget(block.links[0]?.target);
+  return target
+    ? `<a class="chapter__internal-link" href="#${escAttr(target)}">${fmt(text)}</a>`
+    : fmt(text);
+}
+
 function blockHtml(block, options = {}) {
   if (!block || typeof block !== "object") return "";
   const type = blockType(block);
@@ -362,13 +370,13 @@ function blockHtml(block, options = {}) {
       ? Math.max(2, Math.min(6, block.level))
       : 2;
     const target = validTarget(block.target);
-    return `<h${level}${target ? ` id="${escAttr(target)}"` : ""}${provenance}>${fmt(text)}</h${level}>`;
+    return `<h${level}${target ? ` id="${escAttr(target)}"` : ""}${provenance}>${internalLinkTextHtml(block, text)}</h${level}>`;
   }
   if ((type === "p" || type === "paragraph") && text) {
     if (typeof block.kind === "string" && block.kind.startsWith("instructions")) {
       return `<div class="chapter__instructions"${provenance}>${instructionParagraphsHtml(text)}</div>`;
     }
-    return `<p${options.lead ? ' class="lead"' : ""}${provenance}>${fmt(text)}</p>`;
+    return `<p${options.lead ? ' class="lead"' : ""}${provenance}>${internalLinkTextHtml(block, text)}</p>`;
   }
   if (type === "callout" && text) {
     const title = typeof block.title === "string" && block.title.trim() && block.title !== text
@@ -776,9 +784,9 @@ function wire() {
   $("#chapter").addEventListener("click", (e) => {
     const b = e.target.closest(".vref");
     if (b) { e.preventDefault(); openVerse(b); }
-    const contentsLink = e.target.closest('.chapter__contents a[href^="#"]');
-    if (contentsLink) {
-      const target = contentsLink.getAttribute("href").slice(1);
+    const internalLink = e.target.closest('.chapter__contents a[href^="#"], .chapter__internal-link[href^="#"]');
+    if (internalLink) {
+      const target = internalLink.getAttribute("href").slice(1);
       const chapterIndex = chapterIndexForTarget(state.book, target);
       if (chapterIndex >= 0) {
         e.preventDefault();

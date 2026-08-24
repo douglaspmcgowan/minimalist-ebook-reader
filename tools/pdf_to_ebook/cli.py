@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
+import tempfile
+from contextlib import nullcontext
 from pathlib import Path
 
 from .extract import extract_pdf
@@ -10,6 +13,66 @@ from .model import stable_json_bytes
 from .package import build_reader_package
 from .semantics import classify_records
 from .validate import validate_release
+
+
+def _validate_output_paths(source: Path, output: Path, report_path: Path | None, asset_root: Path | None) -> None:
+    resolved_source = source.resolve()
+    resolved_output = output.resolve()
+    resolved_report = report_path.resolve() if report_path is not None else None
+    if resolved_output == resolved_source:
+        raise ValueError("Output path must be different from the source path.")
+    if resolved_report == resolved_source:
+        raise ValueError("Report path must be different from the source path.")
+    if resolved_report == resolved_output:
+        raise ValueError("Output and report paths must be different.")
+    if asset_root is None:
+        return
+    resolved_root = asset_root.resolve()
+    if resolved_root == Path(resolved_root.anchor):
+        raise ValueError("The asset root must not be a filesystem root.")
+    if resolved_root.exists() and not resolved_root.is_dir():
+        raise ValueError("The asset root must be a directory.")
+    if resolved_root in {resolved_source, resolved_output, resolved_report}:
+        raise ValueError("The asset root must not alias the source, output, or report path.")
+    managed_assets = (resolved_root / "assets").resolve()
+    for name, path in (("source", resolved_source), ("output", resolved_output), ("report", resolved_report)):
+        if path is None:
+            continue
+        try:
+            path.relative_to(managed_assets)
+        except ValueError:
+            continue
+        raise ValueError(f"The {name} path must stay outside the managed asset directory.")
+
+
+def _commit_release(output: Path, package_bytes: bytes, staging_root: Path | None, asset_root: Path | None) -> None:
+    output.parent.mkdir(parents=True, exist_ok=True)
+    temporary_output: Path | None = None
+    staged_assets = staging_root / "assets" if staging_root is not None else None
+    live_assets = asset_root / "assets" if asset_root is not None else None
+    previous_assets = staging_root / "previous-assets" if staging_root is not None else None
+    try:
+        with tempfile.NamedTemporaryFile(dir=output.parent, prefix=f".{output.name}.", suffix=".tmp", delete=False) as handle:
+            handle.write(package_bytes)
+            handle.flush()
+            os.fsync(handle.fileno())
+            temporary_output = Path(handle.name)
+        if staged_assets is not None and staged_assets.is_dir() and live_assets is not None and previous_assets is not None:
+            if live_assets.exists():
+                os.replace(live_assets, previous_assets)
+            os.replace(staged_assets, live_assets)
+        os.replace(temporary_output, output)
+        temporary_output = None
+    except OSError:
+        if staged_assets is not None and live_assets is not None and previous_assets is not None:
+            if live_assets.exists() and not staged_assets.exists():
+                os.replace(live_assets, staged_assets)
+            if previous_assets.exists():
+                os.replace(previous_assets, live_assets)
+        raise
+    finally:
+        if temporary_output is not None:
+            temporary_output.unlink(missing_ok=True)
 
 
 def convert(
@@ -20,40 +83,49 @@ def convert(
     asset_root: Path | None = None,
     expected_source_tokens: list[str] | None = None,
 ) -> int:
-    if report_path is not None and output.resolve() == report_path.resolve():
-        raise ValueError("Output and report paths must be different.")
-    preflight, records = extract_pdf(source)
-    blocks = classify_records(records)
-    page_count = int(preflight["source"]["page_count"])
-    package = build_reader_package(
-        blocks,
-        page_count,
-        preflight["source"],
-        {key: value for key, value in preflight.items() if key not in {"source"}},
-        source.stem,
+    _validate_output_paths(source, output, report_path, asset_root)
+    resolved_asset_root = asset_root.resolve() if asset_root is not None else None
+    if resolved_asset_root is not None:
+        resolved_asset_root.mkdir(parents=True, exist_ok=True)
+    staging_context = (
+        tempfile.TemporaryDirectory(prefix=".pdf-to-ebook-", dir=resolved_asset_root)
+        if resolved_asset_root is not None
+        else nullcontext(None)
     )
-    page_targets = {
-        page: chapter["target"]
-        for chapter in package["chapters"]
-        for page in range(chapter["sourcePages"]["start"], chapter["sourcePages"]["end"] + 1)
-    }
-    report = validate_release(
-        blocks,
-        page_count,
-        reader_targets={chapter["target"] for chapter in package["chapters"]},
-        page_targets=page_targets,
-        non_text_objects=non_text_objects or (),
-        asset_root=asset_root,
-        expected_source_tokens=expected_source_tokens or (),
-    )
-    if report_path:
-        report_path.parent.mkdir(parents=True, exist_ok=True)
-        report_path.write_bytes(stable_json_bytes(report.to_dict()))
-    if not report.releasable:
-        return 2
-    output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_bytes(stable_json_bytes(package))
-    return 0
+    with staging_context as staging:
+        staging_root = Path(staging) if staging is not None else None
+        preflight, records = extract_pdf(source, asset_output_dir=staging_root)
+        blocks = classify_records(records)
+        page_count = int(preflight["source"]["page_count"])
+        package = build_reader_package(
+            blocks,
+            page_count,
+            preflight["source"],
+            {key: value for key, value in preflight.items() if key not in {"source"}},
+            source.stem,
+        )
+        page_targets = {
+            page: chapter["target"]
+            for chapter in package["chapters"]
+            for page in range(chapter["sourcePages"]["start"], chapter["sourcePages"]["end"] + 1)
+        }
+        report = validate_release(
+            blocks,
+            page_count,
+            reader_targets={chapter["target"] for chapter in package["chapters"]},
+            page_targets=page_targets,
+            non_text_objects=non_text_objects or (),
+            asset_root=staging_root,
+            expected_source_tokens=expected_source_tokens or (),
+            extraction_records=records,
+        )
+        if report_path:
+            report_path.parent.mkdir(parents=True, exist_ok=True)
+            report_path.write_bytes(stable_json_bytes(report.to_dict()))
+        if not report.releasable:
+            return 2
+        _commit_release(output, stable_json_bytes(package), staging_root, resolved_asset_root)
+        return 0
 
 
 def _json_list(path: Path, option: str) -> list:

@@ -29,6 +29,50 @@ def _target_page(record: ExtractionRecord) -> int | None:
     return None
 
 
+def _aligned_contents_entry(first: ExtractionRecord, previous: ExtractionRecord, candidate: ExtractionRecord) -> bool:
+    height = max(
+        1.0,
+        first.bbox[3] - first.bbox[1],
+        previous.bbox[3] - previous.bbox[1],
+        candidate.bbox[3] - candidate.bbox[1],
+    )
+    vertical_gap = candidate.bbox[1] - previous.bbox[3]
+    return (
+        candidate.page == first.page
+        and _target_page(candidate) is not None
+        and abs(candidate.bbox[0] - first.bbox[0]) <= 12
+        and -height <= vertical_gap <= max(36.0, 2.5 * height)
+    )
+
+
+def _linked_contents_cluster(records: list[ExtractionRecord], start: int) -> bool:
+    first = records[start]
+    if _target_page(first) is None:
+        return False
+    aligned = 0
+    previous = first
+    for record in records[start:]:
+        if aligned and not _aligned_contents_entry(first, previous, record):
+            break
+        if not aligned and (record.page != first.page or _target_page(record) is None):
+            break
+        aligned += 1
+        previous = record
+    return aligned >= 2
+
+
+def _links_data(records: list[ExtractionRecord]) -> list[dict]:
+    return [dict(link) for record in records for link in record.links if isinstance(link, dict)]
+
+
+def _text_data(records: list[ExtractionRecord]) -> dict:
+    data = {"text": _join_records(records)}
+    links = _links_data(records)
+    if links:
+        data["links"] = links
+    return data
+
+
 def _list_data(records: list[ExtractionRecord]) -> dict:
     parsed = [_LIST.match(record.text) for record in records]
     markers = [match for match in parsed if match]
@@ -182,13 +226,21 @@ def classify_records(records: Iterable[ExtractionRecord]) -> list[SemanticBlock]
             index += 1
             continue
 
-        if hint == "contents" or (record.links and _target_page(record) is not None):
+        if hint == "contents" or _linked_contents_cluster(source, index):
+            explicit_contents = hint == "contents"
             group: list[ExtractionRecord] = []
             entries: list[dict] = []
+            previous_contents_entry = record
             while index < len(source):
                 item = source[index]
                 is_linked_entry = bool(item.links and _target_page(item) is not None)
-                if item.role_hint not in {"contents", "contents_subtitle"} and not is_linked_entry:
+                if explicit_contents:
+                    if item.role_hint not in {"contents", "contents_subtitle"} and not is_linked_entry:
+                        break
+                elif (
+                    not is_linked_entry
+                    or (group and not _aligned_contents_entry(record, previous_contents_entry, item))
+                ):
                     break
                 group.append(item)
                 if item.role_hint == "contents_subtitle":
@@ -196,6 +248,7 @@ def classify_records(records: Iterable[ExtractionRecord]) -> list[SemanticBlock]
                         entries[-1]["subtitle"] = item.text.strip()
                 else:
                     entries.append({"title": item.text.strip(), "subtitle": None, "target_page": _target_page(item)})
+                    previous_contents_entry = item
                 index += 1
             blocks.append(_block("contents", {"entries": entries}, group, 0.98, "role-hint", "internal-link-target"))
             continue
@@ -220,7 +273,12 @@ def classify_records(records: Iterable[ExtractionRecord]) -> list[SemanticBlock]
             form = dict(record.form or {"title": record.text, "instructions": "", "fields": []})
             blocks.append(_block("form", form, [record], 0.98 if record.form else 0.65, "label-field-relationships", "role-hint"))
         elif hint == "figure" or record.asset:
-            blocks.append(_block("figure", {"asset": record.asset, "alt": record.alt or "", "caption": record.caption}, [record], 0.95 if record.asset and record.alt else 0.6, "non-text-object", "figure-caption-pair"))
+            figure = {"asset": record.asset, "alt": record.alt or "", "caption": record.caption}
+            if record.metadata.get("asset_sha256"):
+                figure["sha256"] = record.metadata["asset_sha256"]
+            if record.metadata.get("object_name"):
+                figure["object_name"] = record.metadata["object_name"]
+            blocks.append(_block("figure", figure, [record], 0.95 if record.asset and record.alt else 0.6, "non-text-object", "figure-caption-pair"))
         elif hint == "index_entry" or _INDEX.match(record.text):
             group = []
             while index < len(source):
@@ -237,7 +295,10 @@ def classify_records(records: Iterable[ExtractionRecord]) -> list[SemanticBlock]
             blocks.append(_block("divider", {}, [record], 0.9, "role-hint"))
         elif hint == "heading" or (record.bold and record.font_size >= 15):
             level = int(record.metadata.get("level", 1 if record.font_size >= 18 else 2))
-            blocks.append(_block("heading", {"text": record.text.strip(), "level": level, "target": record.metadata.get("target")}, [record], 0.92, "typography", "role-hint" if hint else "font-size"))
+            heading = {"text": record.text.strip(), "level": level, "target": record.metadata.get("target")}
+            if record.links:
+                heading["links"] = _links_data([record])
+            blocks.append(_block("heading", heading, [record], 0.92, "typography", "role-hint" if hint else "font-size"))
         else:
             group = [record]
             index += 1
@@ -249,7 +310,7 @@ def classify_records(records: Iterable[ExtractionRecord]) -> list[SemanticBlock]
                 evidence.append("geometry-line-flow")
             if len({item.page for item in group}) > 1:
                 evidence.append("cross-page-continuation")
-            blocks.append(_block("paragraph", {"text": _join_records(group)}, group, 0.8, *evidence))
+            blocks.append(_block("paragraph", _text_data(group), group, 0.8, *evidence))
             continue
         index += 1
     return blocks

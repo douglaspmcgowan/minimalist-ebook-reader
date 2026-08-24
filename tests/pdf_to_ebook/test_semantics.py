@@ -26,18 +26,57 @@ class SemanticClassificationTests(unittest.TestCase):
         self.assertEqual(contents.data["entries"][0]["subtitle"], "A practical beginning")
         self.assertEqual(contents.data["entries"][0]["target_page"], 2)
 
-    def test_internal_link_can_classify_contents_without_profile_hint(self):
+    def test_single_internal_link_remains_prose_with_link_metadata(self):
         linked = ExtractionRecord(
             page=1,
             bbox=(72, 100, 500, 120),
             reading_order=0,
-            text="Opening chapter",
+            text="See appendix",
             links=[{"target_page": 3}],
         )
         blocks = classify_records([linked])
         self.assertEqual(len(blocks), 1)
+        self.assertEqual(blocks[0].kind, "paragraph")
+        self.assertEqual(blocks[0].data, {"text": "See appendix", "links": [{"target_page": 3}]})
+
+    def test_aligned_internal_link_cluster_classifies_as_contents(self):
+        linked = [
+            ExtractionRecord(page=1, bbox=(72, 100, 500, 120), reading_order=0, text="Opening", links=[{"target_page": 2}]),
+            ExtractionRecord(page=1, bbox=(72, 124, 500, 144), reading_order=1, text="Appendix", links=[{"target_page": 3}]),
+        ]
+
+        blocks = classify_records(linked)
+
+        self.assertEqual(len(blocks), 1)
         self.assertEqual(blocks[0].kind, "contents")
-        self.assertEqual(blocks[0].data["entries"][0]["target_page"], 3)
+        self.assertEqual([entry["target_page"] for entry in blocks[0].data["entries"]], [2, 3])
+
+    def test_distant_internal_links_remain_separate_paragraphs(self):
+        linked = [
+            ExtractionRecord(page=1, bbox=(72, 100, 500, 120), reading_order=0, text="See chapter", links=[{"target_page": 2}]),
+            ExtractionRecord(page=1, bbox=(72, 700, 500, 720), reading_order=1, text="See appendix", links=[{"target_page": 3}]),
+        ]
+
+        blocks = classify_records(linked)
+
+        self.assertEqual([block.kind for block in blocks], ["paragraph", "paragraph"])
+        self.assertEqual([block.data["links"][0]["target_page"] for block in blocks], [2, 3])
+
+    def test_single_linked_heading_preserves_link_metadata(self):
+        linked = ExtractionRecord(
+            page=1,
+            bbox=(72, 100, 500, 124),
+            reading_order=0,
+            text="See appendix",
+            font_size=18,
+            bold=True,
+            links=[{"target_page": 3}],
+        )
+
+        block = classify_records([linked])[0]
+
+        self.assertEqual(block.kind, "heading")
+        self.assertEqual(block.data["links"], [{"target_page": 3}])
 
     def test_list_table_form_figure_and_index_are_structured(self):
         by_kind = {block.kind: block for block in classify_records(self.records)}
@@ -46,6 +85,23 @@ class SemanticClassificationTests(unittest.TestCase):
         self.assertEqual(by_kind["form"].data["fields"][0]["label"], "Income")
         self.assertEqual(by_kind["figure"].data["alt"], "A rising line chart")
         self.assertEqual(by_kind["index"].data["entries"][0]["locators"], ["12", "30"])
+
+    def test_figure_retains_materialized_asset_sha256(self):
+        figure = ExtractionRecord(
+            page=1,
+            bbox=(72, 100, 172, 200),
+            reading_order=0,
+            role_hint="figure",
+            asset="assets/figure.png",
+            alt="Blue square",
+            metadata={"asset_sha256": "a" * 64, "object_name": "figure-1"},
+        )
+
+        block = classify_records([figure])[0]
+
+        self.assertEqual(block.data["asset"], "assets/figure.png")
+        self.assertEqual(block.data["sha256"], "a" * 64)
+        self.assertEqual(block.data["object_name"], "figure-1")
 
     def test_output_is_byte_stable_regardless_of_input_order(self):
         first = stable_json_bytes([b.to_dict() for b in classify_records(self.records)])

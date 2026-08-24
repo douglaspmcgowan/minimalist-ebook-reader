@@ -31,6 +31,18 @@ def _page_targets(chapters: list[dict[str, Any]], page_count: int) -> dict[int, 
 
 def _reader_block(block: SemanticBlock, page_targets: dict[int, str]) -> dict[str, Any]:
     value = deepcopy(block.to_dict())
+    links = value["data"].get("links")
+    if isinstance(links, list):
+        for link in links:
+            if not isinstance(link, dict) or link.get("target"):
+                continue
+            try:
+                target_page = int(link.get("target_page"))
+            except (TypeError, ValueError):
+                continue
+            target = page_targets.get(target_page)
+            if target:
+                link["target"] = target
     if block.kind != "contents":
         return value
     entries = value["data"].get("entries")
