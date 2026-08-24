@@ -596,6 +596,10 @@ def extract_pdf(
             ambiguous = _ambiguous_reading_order(reading_order_candidates, column_axis_extent, rotation)
             for order, candidate in enumerate(sorted(candidates, key=lambda item: _reading_order_key(item, rotation))):
                 metadata = dict(candidate.get("metadata") or {})
+                metadata["page_width"] = round(float(page.width), 3)
+                metadata["page_height"] = round(float(page.height), 3)
+                page_bbox = page.cropbox or (0.0, 0.0, float(page.width), float(page.height))
+                metadata["page_bbox"] = [round(float(value), 3) for value in page_bbox]
                 if ambiguous:
                     metadata["reading_order_ambiguous"] = True
                     _add_review(metadata, {
