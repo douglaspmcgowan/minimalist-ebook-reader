@@ -1,4 +1,5 @@
 import json
+import hashlib
 import tempfile
 import unittest
 from pathlib import Path
@@ -47,6 +48,46 @@ class ConvertPackageTests(unittest.TestCase):
         contents = package["chapters"][0]["blocks"][1]
         self.assertEqual(contents["data"]["entries"][0]["target"], "section-2")
         self.assertTrue(all(block["provenance"] for chapter in package["chapters"] for block in chapter["blocks"]))
+
+    def test_failed_empty_conversion_preserves_existing_reader_package(self):
+        preflight = {"source": {"sha256": "synthetic", "page_count": 1, "metadata": {}}}
+        with tempfile.TemporaryDirectory() as temp:
+            output = Path(temp, "book.json")
+            output.write_text('{"title":"existing"}\n', encoding="utf-8")
+            with patch("tools.pdf_to_ebook.cli.extract_pdf", return_value=(preflight, [])), patch(
+                "tools.pdf_to_ebook.cli.classify_records", return_value=[]
+            ):
+                self.assertEqual(convert(Path(temp, "empty.pdf"), output), 2)
+            self.assertEqual(output.read_text(encoding="utf-8"), '{"title":"existing"}\n')
+
+    def test_convert_applies_optional_release_gate_inputs(self):
+        preflight = {"source": {"sha256": "synthetic", "page_count": 1, "metadata": {}}}
+        blocks = [
+            semantic_block("paragraph", {"text": "Synthetic prose."}, 1, 0),
+            semantic_block(
+                "figure",
+                {"asset": "assets/chart.png", "alt": "Chart", "sha256": hashlib.sha256(b"chart").hexdigest(), "object_id": "chart-1"},
+                1,
+                1,
+            ),
+        ]
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / "assets").mkdir()
+            (root / "assets" / "chart.png").write_bytes(b"chart")
+            output = root / "book.json"
+            with patch("tools.pdf_to_ebook.cli.extract_pdf", return_value=(preflight, [])), patch(
+                "tools.pdf_to_ebook.cli.classify_records", return_value=blocks
+            ):
+                status = convert(
+                    root / "source.pdf",
+                    output,
+                    non_text_objects=[{"id": "chart-1", "page": 1}],
+                    asset_root=root,
+                    expected_source_tokens=["Synthetic", "Chart"],
+                )
+            self.assertEqual(status, 0)
+            self.assertTrue(output.is_file())
 
 
 if __name__ == "__main__":
