@@ -74,9 +74,10 @@ class ConvertPackageTests(unittest.TestCase):
         self.assertEqual([entry["page"] for entry in package["sourceCoverage"]], [1, 2])
         self.assertEqual([chapter["target"] for chapter in package["chapters"]], ["section-1", "section-2"])
         self.assertTrue(all(chapter["blocks"] for chapter in package["chapters"]))
-        contents = package["chapters"][0]["blocks"][1]
+        contents = package["chapters"][0]["blocks"][0]
         self.assertEqual(contents["data"]["entries"][0]["target"], "section-2")
-        self.assertEqual(package["chapters"][0]["blocks"][2]["data"]["links"][0]["target"], "section-2")
+        self.assertEqual(package["chapters"][0]["blocks"][1]["data"]["links"][0]["target"], "section-2")
+        self.assertEqual(package["chapters"][0]["titleProvenance"][0]["page"], 1)
         self.assertTrue(all(block["provenance"] for chapter in package["chapters"] for block in chapter["blocks"]))
 
     def test_failed_empty_conversion_preserves_existing_reader_package(self):

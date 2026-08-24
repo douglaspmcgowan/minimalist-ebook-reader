@@ -24,6 +24,17 @@ function save(patch) {
 }
 
 function bookIdentity(book) {
+  const sourceHash = typeof book?.reader?.source_sha256 === "string"
+    ? book.reader.source_sha256.trim()
+    : "";
+  if (sourceHash) {
+    const edition = typeof book.edition === "string"
+      ? book.edition
+      : typeof book.reader?.edition === "string"
+        ? book.reader.edition
+        : "";
+    return `${sourceHash}\0${edition}`;
+  }
   return `${book.title || ""}\0${book.subtitle || ""}\0${book.author || ""}`;
 }
 
@@ -337,7 +348,12 @@ function chapterHtml(chapter) {
   }
   html += `<div class="chapter__no">${esc(chapterKicker(chapter))}</div>`;
   const chapterTarget = validTarget(chapter?.target) || validTarget(chapter?.id);
-  html += `<h1 class="chapter__title"${chapterTarget ? ` id="${escAttr(chapterTarget)}"` : ""}>${esc(chapterTitle(chapter))}</h1>`;
+  const titleProvenance = provenanceAttrs({
+    provenance: chapter?.titleProvenance,
+    confidence: chapter?.titleConfidence,
+  });
+  const titleHtml = internalLinkTextHtml({ links: chapter?.titleLinks }, chapterTitle(chapter));
+  html += `<h1 class="chapter__title"${chapterTarget ? ` id="${escAttr(chapterTarget)}"` : ""}${titleProvenance}>${titleHtml}</h1>`;
   html += '<div class="chapter__rule"></div>';
   let leadPlaced = false;
   for (const block of blocks) {
@@ -349,11 +365,18 @@ function chapterHtml(chapter) {
 }
 
 function internalLinkTextHtml(block, text) {
-  if (!Array.isArray(block.links) || block.links.length !== 1) return fmt(text);
-  const target = validTarget(block.links[0]?.target);
-  return target
-    ? `<a class="chapter__internal-link" href="#${escAttr(target)}">${fmt(text)}</a>`
-    : fmt(text);
+  if (!Array.isArray(block.links)) return fmt(text);
+  const targets = block.links.map((link) => validTarget(link?.target)).filter(Boolean);
+  if (targets.length === 1) {
+    return `<a class="chapter__internal-link" href="#${escAttr(targets[0])}">${fmt(text)}</a>`;
+  }
+  if (targets.length > 1) {
+    const links = targets.map((target, index) => (
+      `<a class="chapter__internal-link" href="#${escAttr(target)}" aria-label="Go to linked section ${index + 1}">${index + 1}</a>`
+    )).join(", ");
+    return `${fmt(text)} <span class="chapter__internal-links" aria-label="Linked sections">(${links})</span>`;
+  }
+  return fmt(text);
 }
 
 function blockHtml(block, options = {}) {
