@@ -255,12 +255,10 @@ def _cross_page_flow(first: ExtractionRecord, second: ExtractionRecord) -> bool:
     )
 
 
-def _explicit_continuation(first: ExtractionRecord, second: ExtractionRecord, kind: str) -> bool:
+def _explicit_continuation(candidate: ExtractionRecord, kind: str) -> bool:
     return bool(
-        first.metadata.get("continuation")
-        or second.metadata.get("continuation")
-        or first.metadata.get(f"{kind}_continuation")
-        or second.metadata.get(f"{kind}_continuation")
+        candidate.metadata.get("continuation")
+        or candidate.metadata.get(f"{kind}_continuation")
     )
 
 
@@ -300,7 +298,7 @@ def _table_pair_geometry(first: ExtractionRecord, second: ExtractionRecord) -> b
 
 def _approved_headerless_table_continuation(first: ExtractionRecord, second: ExtractionRecord) -> bool:
     return bool(
-        _explicit_continuation(first, second, "table")
+        _explicit_continuation(second, "table")
         and second.metadata.get("table_header_source") == "inferred-first-row"
         and first.table
         and second.table
@@ -311,7 +309,7 @@ def _approved_headerless_table_continuation(first: ExtractionRecord, second: Ext
 def _ambiguous_headerless_table_continuation(first: ExtractionRecord, second: ExtractionRecord) -> bool:
     if not isinstance(first.table, dict) or not isinstance(second.table, dict):
         return False
-    if _explicit_continuation(first, second, "table") or not _table_pair_geometry(first, second):
+    if _explicit_continuation(second, "table") or not _table_pair_geometry(first, second):
         return False
     first_headers = first.table.get("headers")
     second_headers = second.table.get("headers")
@@ -350,7 +348,7 @@ def _conflicting_table_continuation(first: ExtractionRecord, second: ExtractionR
         isinstance(first.table, dict)
         and isinstance(second.table, dict)
         and second.page == first.page + 1
-        and _explicit_continuation(first, second, "table")
+        and _explicit_continuation(second, "table")
         and not _can_join_table(first, second)
     )
 
@@ -374,7 +372,7 @@ def _can_join_quotation(first: ExtractionRecord, second: ExtractionRecord) -> bo
         return False
     if first.metadata.get("attribution") or _has_terminal_sentence(first.text):
         return False
-    return _explicit_continuation(first, second, first.role_hint) or _initial_text_character(second.text).islower()
+    return _explicit_continuation(second, first.role_hint) or _initial_text_character(second.text).islower()
 
 
 def _quotation_data(records: list[ExtractionRecord]) -> dict:
@@ -403,7 +401,7 @@ def _can_join_heading(first: ExtractionRecord, second: ExtractionRecord) -> bool
     second_target = second.metadata.get("target")
     if first_target and second_target and first_target != second_target:
         return False
-    if _explicit_continuation(first, second, "heading"):
+    if _explicit_continuation(second, "heading"):
         return True
     words = re.sub(r"[^\w]+$", "", first.text.strip()).casefold().rsplit(maxsplit=1)
     return bool(words and (words[-1] in _HEADING_CONNECTORS or _initial_text_character(second.text).islower()))
@@ -423,12 +421,12 @@ def _ordered_marker_value(record: ExtractionRecord) -> int | None:
     return int(match.group("marker").rstrip(".)"))
 
 
-def _explicit_list_continuation(first: ExtractionRecord, second: ExtractionRecord) -> bool:
-    return bool(first.metadata.get("list_continuation") or second.metadata.get("list_continuation"))
+def _explicit_list_continuation(candidate: ExtractionRecord) -> bool:
+    return bool(candidate.metadata.get("list_continuation"))
 
 
 def _continues_list_across_page(last_marker: ExtractionRecord, candidate: ExtractionRecord) -> bool:
-    if _explicit_list_continuation(last_marker, candidate):
+    if _explicit_list_continuation(candidate):
         return True
     previous_number = _ordered_marker_value(last_marker)
     candidate_number = _ordered_marker_value(candidate)
@@ -448,7 +446,7 @@ def _can_continue_list(group: list[ExtractionRecord], candidate: ExtractionRecor
             return False
         return _same_page_flow(group[-1], candidate) if candidate.page == group[-1].page else _same_column(last_marker, candidate) and _cross_page_flow(group[-1], candidate) and _continues_list_across_page(last_marker, candidate)
     if candidate.role_hint == "list_continuation":
-        return _nearby_line(group[-1], candidate) if candidate.page == group[-1].page else _cross_page_flow(group[-1], candidate) and _explicit_list_continuation(last_marker, candidate)
+        return _nearby_line(group[-1], candidate) if candidate.page == group[-1].page else _cross_page_flow(group[-1], candidate) and _explicit_list_continuation(candidate)
     return (
         candidate.page == group[-1].page
         and _nearby_line(group[-1], candidate)

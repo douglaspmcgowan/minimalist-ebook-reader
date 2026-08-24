@@ -298,6 +298,26 @@ class SemanticClassificationTests(unittest.TestCase):
 
         self.assertEqual([block.data["items"] for block in blocks], [["First list item"], ["Restarted list item"]])
 
+    def test_list_continuation_approval_applies_only_to_the_incoming_page_pair(self):
+        records = [
+            ExtractionRecord(page=1, bbox=(72, 700, 540, 720), reading_order=4, text="1. First list item", metadata={"page_width": 612, "page_height": 792}),
+            ExtractionRecord(
+                page=2,
+                bbox=(72, 72, 540, 720),
+                reading_order=0,
+                text="2. Approved continuation",
+                metadata={"page_width": 612, "page_height": 792, "list_continuation": True},
+            ),
+            ExtractionRecord(page=3, bbox=(72, 72, 540, 92), reading_order=0, text="1. Restarted list item", metadata={"page_width": 612, "page_height": 792}),
+        ]
+
+        blocks = classify_records(records)
+
+        self.assertEqual(
+            [block.data["items"] for block in blocks],
+            [["First list item", "Approved continuation"], ["Restarted list item"]],
+        )
+
     def test_preserves_complete_paragraphs_before_opening_quotes(self):
         for opening_quote in ('“', '"', '‘', "'"):
             with self.subTest(opening_quote=opening_quote):
@@ -365,6 +385,79 @@ class SemanticClassificationTests(unittest.TestCase):
             "rows": [["Q1", "$10"], ["Q2", "$12"], ["Q3", "$14"]],
         })
         self.assertIn("approved-headerless-continuation", blocks[0].evidence)
+
+    def test_table_continuation_approval_applies_only_to_the_incoming_page_pair(self):
+        records = [
+            ExtractionRecord(
+                page=1,
+                bbox=(72, 620, 540, 720),
+                reading_order=4,
+                role_hint="table",
+                table={"caption": "Quarterly totals", "headers": ["Quarter", "Amount"], "rows": [["Q1", "$10"]]},
+                metadata={"page_width": 612, "page_height": 792, "table_header_source": "inferred-first-row"},
+            ),
+            ExtractionRecord(
+                page=2,
+                bbox=(72, 72, 540, 720),
+                reading_order=0,
+                role_hint="table",
+                table={"caption": None, "headers": ["Q2", "$12"], "rows": [["Q3", "$14"]]},
+                metadata={"page_width": 612, "page_height": 792, "table_header_source": "inferred-first-row", "table_continuation": True},
+            ),
+            ExtractionRecord(
+                page=3,
+                bbox=(72, 72, 540, 160),
+                reading_order=0,
+                role_hint="table",
+                table={"caption": None, "headers": ["Alice", "Editor"], "rows": [["Bob", "Writer"]]},
+                metadata={"page_width": 612, "page_height": 792, "table_header_source": "inferred-first-row"},
+            ),
+        ]
+
+        blocks = classify_records(records)
+
+        self.assertEqual(len(blocks), 2)
+        self.assertEqual(blocks[0].data["rows"], [["Q1", "$10"], ["Q2", "$12"], ["Q3", "$14"]])
+        self.assertEqual(blocks[1].data["headers"], ["Alice", "Editor"])
+        self.assertIn("ambiguous-table-continuation", blocks[1].evidence)
+
+    def test_heading_continuation_approval_applies_only_to_the_incoming_page_pair(self):
+        records = [
+            ExtractionRecord(page=1, bbox=(72, 680, 540, 720), reading_order=4, text="Terms", font_size=20, bold=True, role_hint="heading", metadata={"page_width": 612, "page_height": 792}),
+            ExtractionRecord(
+                page=2,
+                bbox=(72, 72, 540, 720),
+                reading_order=0,
+                text="Conditions",
+                font_size=20,
+                bold=True,
+                role_hint="heading",
+                metadata={"page_width": 612, "page_height": 792, "heading_continuation": True},
+            ),
+            ExtractionRecord(page=3, bbox=(72, 72, 540, 112), reading_order=0, text="Appendix", font_size=20, bold=True, role_hint="heading", metadata={"page_width": 612, "page_height": 792}),
+        ]
+
+        blocks = classify_records(records)
+
+        self.assertEqual([block.data["text"] for block in blocks], ["Terms Conditions", "Appendix"])
+
+    def test_quotation_continuation_approval_applies_only_to_the_incoming_page_pair(self):
+        records = [
+            ExtractionRecord(page=1, bbox=(90, 680, 520, 720), reading_order=4, text="“A quotation", role_hint="quotation", metadata={"page_width": 612, "page_height": 792}),
+            ExtractionRecord(
+                page=2,
+                bbox=(90, 72, 520, 720),
+                reading_order=0,
+                text="continues",
+                role_hint="quotation",
+                metadata={"page_width": 612, "page_height": 792, "quotation_continuation": True},
+            ),
+            ExtractionRecord(page=3, bbox=(90, 72, 520, 112), reading_order=0, text="Another quotation begins.", role_hint="quotation", metadata={"page_width": 612, "page_height": 792}),
+        ]
+
+        blocks = classify_records(records)
+
+        self.assertEqual([block.data["text"] for block in blocks], ["“A quotation continues", "Another quotation begins."])
 
     def test_uncertain_headerless_table_continuation_is_preserved_for_review(self):
         records = [
