@@ -411,6 +411,15 @@ class ExtractionTests(unittest.TestCase):
         self.assertEqual(_widget_value(single), "Beta")
         self.assertEqual(_widget_value(multiple), ["Beta", "Alpha"])
 
+    def test_widget_selected_display_value_uses_option_label_normalization(self):
+        annotation = DictionaryObject({
+            NameObject("/Opt"): ArrayObject([ArrayObject([TextStringObject("b"), TextStringObject(" Beta ")])]),
+            NameObject("/V"): TextStringObject(" b "),
+        })
+
+        self.assertEqual(_widget_options(annotation, "choice", 0), ["Beta"])
+        self.assertEqual(_widget_value(annotation), "Beta")
+
     def test_pushbutton_appearance_stream_is_not_treated_as_options(self):
         normal = StreamObject()
         normal[NameObject("/Subtype")] = NameObject("/Form")
@@ -446,6 +455,20 @@ class ExtractionTests(unittest.TestCase):
             self.assertEqual(vectors[0].metadata["object_kind"], "vector")
             self.assertEqual(vectors[0].metadata["object_id"], "page-0001-vector-001")
             self.assertEqual(preflight["pages"][0]["vector_regions"], 1)
+
+    def test_nested_unconnected_vector_regions_keep_distinct_inventory_ids(self):
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            source, pdf = self._canvas(directory, "nested-vectors.pdf")
+            pdf.rect(10, 10, 592, 772, stroke=1, fill=0)
+            pdf.rect(250, 300, 100, 100, stroke=1, fill=0)
+            pdf.save()
+
+            preflight, records = extract_pdf(source)
+
+            vectors = [record for record in records if record.role_hint == "non_text_object"]
+            self.assertEqual([record.metadata["object_id"] for record in vectors], ["page-0001-vector-001", "page-0001-vector-002"])
+            self.assertEqual(preflight["pages"][0]["vector_regions"], 2)
 
     def test_real_rotated_pdf_keeps_multiple_anchor_spans_and_validates_targets(self):
         with tempfile.TemporaryDirectory() as temp:

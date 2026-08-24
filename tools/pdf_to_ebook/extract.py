@@ -87,6 +87,16 @@ def _contains(outer: tuple[float, float, float, float], inner: tuple[float, floa
 
 
 def _near_or_intersecting(first: tuple[float, float, float, float], second: tuple[float, float, float, float], gap: float = 2.0) -> bool:
+    def isolated_containment(outer: tuple[float, float, float, float], inner: tuple[float, float, float, float]) -> bool:
+        return _contains(outer, inner) and all((
+            inner[0] - outer[0] > gap,
+            inner[1] - outer[1] > gap,
+            outer[2] - inner[2] > gap,
+            outer[3] - inner[3] > gap,
+        ))
+
+    if isolated_containment(first, second) or isolated_containment(second, first):
+        return False
     return not (
         first[2] + gap < second[0]
         or second[2] + gap < first[0]
@@ -318,11 +328,11 @@ def _widget_value(annotation: Any) -> str | list[str]:
     if isinstance(inherited, (list, tuple)):
         for option in inherited:
             if isinstance(option, (list, tuple)) and len(option) >= 2:
-                mapping[str(option[0]).lstrip("/")] = str(option[1])
+                mapping[str(option[0]).lstrip("/").strip()] = str(option[1]).lstrip("/").strip()
 
     def normalize(value: Any) -> str:
-        text = str(value or "").lstrip("/")
-        return mapping.get(text, text)
+        text = str(value or "").lstrip("/").strip()
+        return mapping.get(text, text).lstrip("/").strip()
 
     if isinstance(raw, (list, tuple)):
         return [normalize(value) for value in raw]
