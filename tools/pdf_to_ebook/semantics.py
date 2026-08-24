@@ -29,6 +29,13 @@ def _target_page(record: ExtractionRecord) -> int | None:
     return None
 
 
+def _link_signature(record: ExtractionRecord) -> tuple[int | None, tuple[float, ...]]:
+    link = next((item for item in record.links if isinstance(item, dict)), {})
+    bbox = link.get("bbox")
+    geometry = tuple(float(value) for value in bbox) if isinstance(bbox, (list, tuple)) and len(bbox) == 4 else ()
+    return _target_page(record), geometry
+
+
 def _aligned_contents_entry(first: ExtractionRecord, previous: ExtractionRecord, candidate: ExtractionRecord) -> bool:
     height = max(
         1.0,
@@ -50,6 +57,8 @@ def _linked_contents_cluster(records: list[ExtractionRecord], start: int) -> boo
     if _target_page(first) is None:
         return False
     aligned = 0
+    signatures: set[tuple[int | None, tuple[float, ...]]] = set()
+    targets: set[int | None] = set()
     previous = first
     for record in records[start:]:
         if aligned and not _aligned_contents_entry(first, previous, record):
@@ -57,8 +66,10 @@ def _linked_contents_cluster(records: list[ExtractionRecord], start: int) -> boo
         if not aligned and (record.page != first.page or _target_page(record) is None):
             break
         aligned += 1
+        signatures.add(_link_signature(record))
+        targets.add(_target_page(record))
         previous = record
-    return aligned >= 2
+    return aligned >= 2 and len(signatures) >= 2 and len(targets) >= 2
 
 
 def _links_data(records: list[ExtractionRecord]) -> list[dict]:
@@ -223,6 +234,10 @@ def classify_records(records: Iterable[ExtractionRecord]) -> list[SemanticBlock]
 
         if hint == "contents_subtitle":
             blocks.append(_block("paragraph", {"text": record.text.strip()}, [record], 0.5, "orphaned-contents-subtitle"))
+            index += 1
+            continue
+
+        if hint == "non_text_object":
             index += 1
             continue
 

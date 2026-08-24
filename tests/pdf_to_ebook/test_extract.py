@@ -11,6 +11,8 @@ from reportlab.pdfgen import canvas
 from reportlab.platypus import Table, TableStyle
 
 from tools.pdf_to_ebook.extract import extract_pdf
+from tools.pdf_to_ebook.semantics import classify_records
+from tools.pdf_to_ebook.validate import validate_release
 
 
 class ExtractionTests(unittest.TestCase):
@@ -58,6 +60,7 @@ class ExtractionTests(unittest.TestCase):
         parent = DictionaryObject({
             NameObject("/FT"): NameObject("/Tx"),
             NameObject("/T"): TextStringObject("parent-name"),
+            NameObject("/TU"): TextStringObject("Accessible account number"),
             NameObject("/V"): TextStringObject("parent-value"),
             NameObject("/Ff"): NumberObject(2),
         })
@@ -66,6 +69,22 @@ class ExtractionTests(unittest.TestCase):
         widget[NameObject("/V")] = TextStringObject("child-value")
         del widget[NameObject("/FT")]
         del widget[NameObject("/Ff")]
+        with source.open("wb") as handle:
+            writer.write(handle)
+        return source
+
+    def _radio_group_pdf(self, directory: Path) -> Path:
+        source, pdf = self._canvas(directory, "radio-group.pdf")
+        pdf.drawString(72, 700, "Choose a plan")
+        pdf.acroForm.radio(name="plan", value="monthly", selected=True, x=72, y=650)
+        pdf.acroForm.radio(name="plan", value="annual", selected=False, x=72, y=620)
+        pdf.save()
+        reader = PdfReader(source)
+        writer = PdfWriter()
+        writer.clone_document_from_reader(reader)
+        for reference in writer.pages[0]["/Annots"]:
+            widget = reference.get_object()
+            widget["/Parent"].get_object()[NameObject("/TU")] = TextStringObject("Billing plan")
         with source.open("wb") as handle:
             writer.write(handle)
         return source
@@ -125,7 +144,9 @@ class ExtractionTests(unittest.TestCase):
             _, records = extract_pdf(source)
 
             linked = next(record for record in records if record.text == "Chapter two")
-            self.assertEqual(linked.links, [{"target_page": 2}])
+            self.assertEqual(linked.links[0]["target_page"], 2)
+            self.assertEqual(linked.links[0]["text"], "Chapter two")
+            self.assertEqual(len(linked.links[0]["bbox"]), 4)
 
     def test_extracts_real_widget_field_metadata(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -138,8 +159,9 @@ class ExtractionTests(unittest.TestCase):
             _, records = extract_pdf(source)
 
             widget = next(record for record in records if record.role_hint == "form")
-            self.assertEqual(widget.form["fields"], [{"name": "email", "type": "text", "value": "", "required": False}])
+            self.assertEqual(widget.form["fields"], [{"name": "email", "label": "email", "type": "text", "value": "", "required": False}])
             self.assertEqual(widget.metadata["widget_name"], "email")
+            self.assertEqual(widget.metadata["review"][0]["code"], "widget-label-name-fallback")
 
     def test_unmaterialized_figure_has_blocking_review_evidence(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -196,10 +218,13 @@ class ExtractionTests(unittest.TestCase):
 
                 _, records = extract_pdf(source)
 
-                self.assertTrue(
-                    any(record.links == [{"target_page": 2}] for record in records),
-                    f"rotation {rotation}",
-                )
+                linked = [record for record in records if record.links]
+                self.assertEqual([record.text for record in linked], ["Rotated link"], f"rotation {rotation}")
+                self.assertEqual(linked[0].links[0]["target_page"], 2)
+                self.assertEqual(linked[0].links[0]["text"], "Rotated link")
+                self.assertEqual(len(linked[0].links[0]["bbox"]), 4)
+                blocks = classify_records(record for record in records if record.page == 1)
+                self.assertNotIn("contents", [block.kind for block in blocks], f"rotation {rotation}")
 
     def test_inherits_widget_attributes_with_child_precedence(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -207,9 +232,73 @@ class ExtractionTests(unittest.TestCase):
 
             widget = next(record for record in records if record.role_hint == "form")
             self.assertEqual(
-                [{"name": "child-name", "type": "text", "value": "child-value", "required": True}],
+                [{"name": "child-name", "label": "Accessible account number", "type": "text", "value": "child-value", "required": True}],
                 widget.form["fields"],
             )
+            self.assertNotIn("review", widget.metadata)
+
+    def test_groups_related_widgets_and_validates_inherited_accessible_label_end_to_end(self):
+        with tempfile.TemporaryDirectory() as temp:
+            _, records = extract_pdf(self._radio_group_pdf(Path(temp)))
+
+            forms = [record for record in records if record.role_hint == "form"]
+            self.assertEqual(len(forms), 1)
+            self.assertEqual(forms[0].form["title"], "Billing plan")
+            self.assertEqual(forms[0].form["fields"][0]["label"], "Billing plan")
+            self.assertEqual(forms[0].metadata["widget_count"], 2)
+            report = validate_release(classify_records(records), page_count=1, extraction_records=records)
+            self.assertTrue(report.releasable, [item.to_dict() for item in report.items])
+
+    def test_enumerates_real_pdf_vector_region_for_mandatory_disposition(self):
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            source, pdf = self._canvas(directory, "vector.pdf")
+            pdf.rect(200, 400, 80, 60, stroke=1, fill=0)
+            pdf.save()
+
+            preflight, records = extract_pdf(source)
+
+            vectors = [record for record in records if record.role_hint == "non_text_object"]
+            self.assertEqual(len(vectors), 1)
+            self.assertEqual(vectors[0].metadata["object_kind"], "vector")
+            self.assertEqual(vectors[0].metadata["object_id"], "page-0001-vector-001")
+            self.assertEqual(preflight["pages"][0]["vector_regions"], 1)
+
+    def test_real_rotated_pdf_keeps_multiple_anchor_spans_and_validates_targets(self):
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            raw, pdf = self._canvas(directory, "raw-anchors.pdf")
+            pdf.drawString(72, 700, "First Second")
+            pdf.linkAbsolute("first", "one", Rect=(70, 696, 98, 712), thickness=0)
+            pdf.linkAbsolute("second", "two", Rect=(100, 696, 145, 712), thickness=0)
+            pdf.showPage()
+            pdf.bookmarkPage("one")
+            pdf.drawString(72, 700, "One")
+            pdf.showPage()
+            pdf.bookmarkPage("two")
+            pdf.drawString(72, 700, "Two")
+            pdf.save()
+            reader = PdfReader(raw)
+            writer = PdfWriter()
+            writer.clone_document_from_reader(reader)
+            writer.pages[0].rotate(90)
+            source = directory / "anchors.pdf"
+            with source.open("wb") as handle:
+                writer.write(handle)
+
+            _, records = extract_pdf(source)
+            linked = next(record for record in records if record.text == "First Second")
+            self.assertEqual([link["target_page"] for link in linked.links], [2, 3])
+            self.assertEqual([link["text"] for link in linked.links], ["First", "Second"])
+            self.assertEqual(len({tuple(link["bbox"]) for link in linked.links}), 2)
+            blocks = classify_records(records)
+            report = validate_release(
+                blocks,
+                page_count=3,
+                reader_targets={"section-2", "section-3"},
+                page_targets={2: "section-2", 3: "section-3"},
+            )
+            self.assertTrue(report.releasable, [item.to_dict() for item in report.items])
 
 
 if __name__ == "__main__":

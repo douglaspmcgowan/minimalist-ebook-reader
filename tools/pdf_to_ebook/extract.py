@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from collections import Counter
 from pathlib import Path
 from typing import Any
@@ -36,6 +37,7 @@ def preflight_pdf(path: str | Path) -> dict[str, Any]:
         for number, page in enumerate(pdf.pages, start=1):
             text = page.extract_text() or ""
             tables = page.find_tables()
+            table_boxes = [tuple(float(value) for value in table.bbox) for table in tables]
             pages.append({
                 "page": number,
                 "width": round(float(page.width), 3),
@@ -43,6 +45,7 @@ def preflight_pdf(path: str | Path) -> dict[str, Any]:
                 "characters": len(text),
                 "images": len(page.images),
                 "tables": len(tables),
+                "vector_regions": len(_vector_regions(page, table_boxes)),
                 "annotations": len(page.annots or []),
             })
     metadata = {str(key).lstrip("/"): str(value) for key, value in (reader.metadata or {}).items() if value is not None}
@@ -77,6 +80,100 @@ def _line_segments(line: list[dict[str, Any]], column_gap: float = 72.0) -> list
 
 def _intersection(first: tuple[float, float, float, float], second: tuple[float, float, float, float]) -> bool:
     return first[0] < second[2] and second[0] < first[2] and first[1] < second[3] and second[1] < first[3]
+
+
+def _contains(outer: tuple[float, float, float, float], inner: tuple[float, float, float, float]) -> bool:
+    return inner[0] >= outer[0] and inner[1] >= outer[1] and inner[2] <= outer[2] and inner[3] <= outer[3]
+
+
+def _near_or_intersecting(first: tuple[float, float, float, float], second: tuple[float, float, float, float], gap: float = 2.0) -> bool:
+    return not (
+        first[2] + gap < second[0]
+        or second[2] + gap < first[0]
+        or first[3] + gap < second[1]
+        or second[3] + gap < first[1]
+    )
+
+
+def _vector_bbox(item: dict[str, Any]) -> tuple[float, float, float, float] | None:
+    try:
+        bbox = tuple(float(item[key]) for key in ("x0", "top", "x1", "bottom"))
+    except (KeyError, TypeError, ValueError):
+        return None
+    if bbox[0] > bbox[2] or bbox[1] > bbox[3]:
+        return None
+    return bbox
+
+
+def _vector_regions(page: Any, table_boxes: list[tuple[float, float, float, float]]) -> list[tuple[float, float, float, float]]:
+    primitives = []
+    for item in [*page.curves, *page.rects, *page.lines]:
+        bbox = _vector_bbox(item)
+        if bbox is not None and not any(_contains(table, bbox) for table in table_boxes):
+            primitives.append(bbox)
+    regions: list[tuple[float, float, float, float]] = []
+    for bbox in sorted(set(primitives)):
+        matches = [index for index, region in enumerate(regions) if _near_or_intersecting(region, bbox)]
+        if not matches:
+            regions.append(bbox)
+            continue
+        merged = bbox
+        for index in reversed(matches):
+            region = regions.pop(index)
+            merged = (
+                min(merged[0], region[0]),
+                min(merged[1], region[1]),
+                max(merged[2], region[2]),
+                max(merged[3], region[3]),
+            )
+        regions.append(merged)
+    return sorted(regions, key=lambda bbox: (bbox[1], bbox[0], bbox[3], bbox[2]))
+
+
+def _logical_rotated_spans(page: Any) -> list[dict[str, Any]]:
+    rotation = int(getattr(page, "rotation", 0) or 0) % 360
+    if rotation == 0:
+        return page.extract_words(extra_attrs=["fontname", "size"], keep_blank_chars=False)
+    groups: list[list[dict[str, Any]]] = []
+    anchors: list[float] = []
+    for character in page.chars:
+        anchor = float(character["x0"] if rotation in {90, 270} else character["top"])
+        match = next((index for index, value in enumerate(anchors) if abs(anchor - value) <= 4.0), None)
+        if match is None:
+            anchors.append(anchor)
+            groups.append([])
+            match = len(groups) - 1
+        groups[match].append(character)
+    spans = []
+    for group in groups:
+        text = re.sub(r"\s+", " ", "".join(str(item.get("text") or "") for item in group)).strip()
+        if not text:
+            continue
+        spans.append({
+            "text": text,
+            "x0": min(float(item["x0"]) for item in group),
+            "x1": max(float(item["x1"]) for item in group),
+            "top": min(float(item["top"]) for item in group),
+            "bottom": max(float(item["bottom"]) for item in group),
+            "fontname": str(group[0].get("fontname") or ""),
+            "size": sum(
+                float(item["x1"] - item["x0"] if rotation in {90, 270} else item["bottom"] - item["top"])
+                for item in group
+            ) / len(group),
+        })
+    return spans
+
+
+def _anchor_text(page: Any, bbox: tuple[float, float, float, float]) -> str:
+    characters = [
+        str(character.get("text") or "")
+        for character in page.chars
+        if _intersection(
+            (float(character["x0"]), float(character["top"]), float(character["x1"]), float(character["bottom"])),
+            bbox,
+        )
+    ]
+    return re.sub(r"\s+", " ", "".join(characters)).strip()
 
 
 def _annotation_bbox(annotation: Any, page: Any) -> tuple[float, float, float, float] | None:
@@ -123,6 +220,23 @@ def _inherited_annotation_value(annotation: Any, key: str) -> Any:
     return None
 
 
+def _annotation_group_id(annotation: Any) -> str:
+    current = annotation
+    identity = ""
+    seen: set[tuple[int | None, int | None]] = set()
+    while current is not None:
+        reference = getattr(current, "indirect_reference", None)
+        key = (getattr(reference, "idnum", None), getattr(reference, "generation", None))
+        if key in seen:
+            break
+        seen.add(key)
+        if key[0] is not None:
+            identity = f"{key[0]}:{key[1] or 0}"
+        parent = current.get("/Parent")
+        current = parent.get_object() if parent is not None else None
+    return identity or str(_inherited_annotation_value(annotation, "/T") or "anonymous")
+
+
 def _destination_page(reader: PdfReader, destination: Any) -> int | None:
     if destination is None:
         return None
@@ -161,17 +275,30 @@ def _page_annotations(reader: PdfReader, page_number: int) -> tuple[list[dict[st
                 links.append({"bbox": bbox, "target_page": target_page})
         elif subtype == "/Widget" and bbox is not None:
             name = str(_inherited_annotation_value(annotation, "/T") or "")
+            tooltip = str(_inherited_annotation_value(annotation, "/TU") or "").strip()
+            label = tooltip or name
             field_type = {"/Tx": "text", "/Btn": "button", "/Ch": "choice", "/Sig": "signature"}.get(str(_inherited_annotation_value(annotation, "/FT") or ""), "unknown")
-            widgets.append({
+            widget = {
                 "bbox": bbox,
+                "group_id": _annotation_group_id(annotation),
                 "name": name,
+                "label": label,
                 "field": {
                     "name": name,
+                    "label": label,
                     "type": field_type,
                     "value": str(_inherited_annotation_value(annotation, "/V") or ""),
                     "required": bool(int(_inherited_annotation_value(annotation, "/Ff") or 0) & 2),
                 },
-            })
+            }
+            if not tooltip:
+                widget["review"] = {
+                    "code": "widget-label-name-fallback",
+                    "severity": "high",
+                    "message": "Widget label falls back to /T because inherited /TU is absent.",
+                    "field_name": name,
+                }
+            widgets.append(widget)
     return links, widgets
 
 
@@ -265,7 +392,7 @@ def extract_pdf(
                 body = [[str(cell or "").strip() for cell in row] for row in rows[1:]]
                 candidates.append({"bbox": bbox, "role_hint": "table", "table": {"caption": None, "headers": headers, "rows": body}, "text": ""})
 
-            words = page.extract_words(extra_attrs=["fontname", "size"], keep_blank_chars=False)
+            words = _logical_rotated_spans(page)
             for line in _group_words(words):
                 for segment in _line_segments(line):
                     x0 = min(float(word["x0"]) for word in segment)
@@ -284,7 +411,15 @@ def extract_pdf(
                             "text": text,
                             "font_size": round(sum(sizes) / len(sizes), 3),
                             "bold": any("bold" in font.lower() for font in fonts),
-                            "links": [{"target_page": link["target_page"]} for link in links if _intersection(bbox, link["bbox"])],
+                            "links": [
+                                {
+                                    "target_page": link["target_page"],
+                                    "bbox": list(link["bbox"]),
+                                    "text": _anchor_text(page, link["bbox"]) or text,
+                                }
+                                for link in links
+                                if _intersection(bbox, link["bbox"])
+                            ],
                         })
 
             for image_number, image in enumerate(page.images, start=1):
@@ -293,13 +428,38 @@ def extract_pdf(
                 metadata["object_name"] = image.get("name")
                 candidates.append({"bbox": bbox, "text": "", "role_hint": "figure", "asset": asset, "alt": _image_alt(image), "metadata": metadata})
 
-            for widget in widgets:
+            for vector_number, bbox in enumerate(_vector_regions(page, table_boxes), start=1):
                 candidates.append({
-                    "bbox": widget["bbox"],
+                    "bbox": bbox,
+                    "text": "",
+                    "role_hint": "non_text_object",
+                    "metadata": {
+                        "object_id": f"page-{page_number:04d}-vector-{vector_number:03d}",
+                        "object_kind": "vector",
+                    },
+                })
+
+            widget_groups: dict[str, list[dict[str, Any]]] = {}
+            for widget in widgets:
+                widget_groups.setdefault(widget["group_id"], []).append(widget)
+            for group in widget_groups.values():
+                first = group[0]
+                bbox = (
+                    min(widget["bbox"][0] for widget in group),
+                    min(widget["bbox"][1] for widget in group),
+                    max(widget["bbox"][2] for widget in group),
+                    max(widget["bbox"][3] for widget in group),
+                )
+                metadata = {"widget_name": first["name"], "widget_count": len(group)}
+                for widget in group:
+                    if widget.get("review"):
+                        _add_review(metadata, widget["review"])
+                candidates.append({
+                    "bbox": bbox,
                     "text": "",
                     "role_hint": "form",
-                    "form": {"title": widget["name"], "instructions": "", "fields": [widget["field"]]},
-                    "metadata": {"widget_name": widget["name"]},
+                    "form": {"title": first["label"], "instructions": "", "fields": [first["field"]]},
+                    "metadata": metadata,
                 })
 
             ambiguous = _ambiguous_reading_order(candidates, float(page.width))

@@ -52,8 +52,9 @@ def validate_release(
     extraction_records: Iterable[ExtractionRecord] = (),
 ) -> ValidationReport:
     materialized = list(blocks)
+    extracted = list(extraction_records)
     items = list(review_items)
-    items.extend(_extraction_review_items(extraction_records))
+    items.extend(_extraction_review_items(extracted))
     covered: set[int] = set(int(page) for page in intentionally_excluded_pages)
     inventory: dict[str, int] = {}
     targets = {str(target) for target in reader_targets}
@@ -99,6 +100,8 @@ def validate_release(
                 if not target or str(target) not in targets:
                     unresolved_contents_targets += 1
                     items.append(ReviewItem("unresolved-contents-target", "high", block.provenance[0].page if block.provenance else None, f"Contents entry {entry.get('title')!r} does not resolve to a reader target."))
+        else:
+            _validate_block_links(items, block, position, targets, page_target_map)
         if block.kind == "form":
             page = block.provenance[0].page if block.provenance else None
             fields = block.data.get("fields")
@@ -130,7 +133,17 @@ def validate_release(
                 items.append(ReviewItem("inconsistent-provenance-order", "high", source.page, f"Block {position} regresses or repeats reading order on source page {source.page}."))
             prior_order[source.page] = source.reading_order
 
-    _validate_non_text_objects(items, assets, non_text_objects)
+    automatic_objects = [
+        {
+            "id": record.metadata.get("object_id"),
+            "object_kind": record.metadata.get("object_kind"),
+            "page": record.page,
+            "bbox": list(record.bbox),
+        }
+        for record in extracted
+        if record.role_hint == "non_text_object" or record.metadata.get("non_text_object")
+    ]
+    _validate_non_text_objects(items, materialized, [*automatic_objects, *list(non_text_objects)])
     _validate_assets(items, assets, asset_root)
     missing_text_tokens = _validate_text_coverage(items, materialized, expected_source_tokens)
 
@@ -150,26 +163,70 @@ def validate_release(
     )
 
 
-def _validate_non_text_objects(items: list[ReviewItem], figures: list[tuple[int | None, dict]], objects: Iterable[dict]) -> None:
+def _validate_non_text_objects(items: list[ReviewItem], blocks: list[SemanticBlock], objects: Iterable[dict]) -> None:
     for position, obj in enumerate(objects):
         if not isinstance(obj, dict):
             items.append(ReviewItem("missing-non-text-object-disposition", "high", None, f"Non-text object {position} has no usable disposition."))
             continue
         page = obj.get("page")
         object_id = obj.get("id") or obj.get("object_id") or obj.get("object_name")
+        bbox = obj.get("bbox")
+        try:
+            normalized_bbox = tuple(float(value) for value in bbox) if isinstance(bbox, (list, tuple)) and len(bbox) == 4 else None
+        except (TypeError, ValueError):
+            normalized_bbox = None
         matched = any(
-            figure_page == page
-            and (not object_id or object_id in {data.get("id"), data.get("object_id"), data.get("object_name")})
-            for figure_page, data in figures
+            block.kind in {"divider", "figure"}
+            and (page is None or any(source.page == page for source in block.provenance))
+            and (
+                (bool(object_id) and object_id in {block.data.get("id"), block.data.get("object_id"), block.data.get("object_name")})
+                or (
+                    normalized_bbox is not None
+                    and any(source.page == page and tuple(source.bbox) == normalized_bbox for source in block.provenance)
+                )
+                or (not object_id and normalized_bbox is None and bbox is None)
+            )
+            for block in blocks
         )
         approved = any(
             item.approved
             and item.code == "non-text-object-disposition"
-            and (item.page == page or item.details.get("object_id") == object_id)
+            and (
+                item.details.get("object_id") == object_id
+                if object_id
+                else item.page == page and not item.details.get("object_id")
+            )
             for item in items
         )
         if not matched and not approved:
             items.append(ReviewItem("missing-non-text-object-disposition", "high", page if isinstance(page, int) else None, f"Non-text object {object_id or position} lacks a semantic block or approved disposition."))
+
+
+def _validate_block_links(
+    items: list[ReviewItem],
+    block: SemanticBlock,
+    position: int,
+    targets: set[str],
+    page_target_map: dict[int, str],
+) -> None:
+    links = block.data.get("links")
+    if not isinstance(links, list):
+        return
+    page = block.provenance[0].page if block.provenance else None
+    for link_position, link in enumerate(links):
+        if not isinstance(link, dict):
+            items.append(ReviewItem("unresolved-link-target", "high", page, f"Block {position} link {link_position} is invalid."))
+            continue
+        target = link.get("target")
+        if not target:
+            try:
+                target = page_target_map.get(int(link.get("target_page")))
+            except (TypeError, ValueError):
+                target = None
+        if target and not _READER_TARGET.fullmatch(str(target)):
+            items.append(ReviewItem("invalid-reader-target", "high", page, f"Block {position} link {link_position} has an unsafe reader target."))
+        if not target or str(target) not in targets:
+            items.append(ReviewItem("unresolved-link-target", "high", page, f"Block {position} link {link_position} does not resolve to a reader target."))
 
 
 def _validate_assets(items: list[ReviewItem], figures: list[tuple[int | None, dict]], asset_root: str | Path | None) -> None:

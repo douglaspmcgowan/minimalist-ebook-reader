@@ -194,6 +194,118 @@ class ValidationTests(unittest.TestCase):
         self.assertFalse(report.releasable)
         self.assertTrue(any(item.code == "missing-non-text-object-disposition" for item in report.items))
 
+    def test_automatic_extraction_vector_inventory_requires_coverage(self):
+        vector = ExtractionRecord(
+            page=1,
+            bbox=(200, 300, 280, 360),
+            reading_order=1,
+            role_hint="non_text_object",
+            metadata={"object_id": "page-0001-vector-001", "object_kind": "vector"},
+        )
+
+        report = validate_release([block()], page_count=1, extraction_records=[vector])
+
+        self.assertFalse(report.releasable)
+        self.assertTrue(any(item.code == "missing-non-text-object-disposition" for item in report.items))
+
+    def test_automatic_vector_inventory_accepts_matching_semantic_provenance(self):
+        source = Provenance(page=1, bbox=(200, 300, 280, 360), reading_order=0)
+        vector = ExtractionRecord(
+            page=1,
+            bbox=source.bbox,
+            reading_order=0,
+            role_hint="non_text_object",
+            metadata={"object_id": "page-0001-vector-001", "object_kind": "vector"},
+        )
+        divider = SemanticBlock("divider", {"object_id": "page-0001-vector-001"}, [source], 0.98, ["vector-geometry"])
+
+        report = validate_release([divider], page_count=1, extraction_records=[vector])
+
+        self.assertTrue(report.releasable, [item.to_dict() for item in report.items])
+
+    def test_vector_disposition_approval_is_scoped_to_one_object(self):
+        vectors = [
+            ExtractionRecord(
+                page=1,
+                bbox=(20 * number, 100, 20 * number + 10, 110),
+                reading_order=number,
+                role_hint="non_text_object",
+                metadata={"object_id": f"vector-{number}", "object_kind": "vector"},
+            )
+            for number in (1, 2)
+        ]
+        approval = ReviewItem(
+            "non-text-object-disposition",
+            "high",
+            1,
+            "First vector is decorative.",
+            approved=True,
+            details={"object_id": "vector-1"},
+        )
+
+        report = validate_release([block()], page_count=1, extraction_records=vectors, review_items=[approval])
+
+        missing = [item for item in report.items if item.code == "missing-non-text-object-disposition"]
+        self.assertEqual(len(missing), 1)
+        self.assertIn("vector-2", missing[0].message)
+
+    def test_non_text_semantic_coverage_must_be_on_the_inventory_page(self):
+        figure = SemanticBlock(
+            "figure",
+            {"asset": "assets/vector.png", "alt": "Vector", "object_id": "shared-id"},
+            [Provenance(page=2, bbox=(20, 100, 30, 110), reading_order=0)],
+            0.98,
+            ["non-text-object"],
+        )
+
+        report = validate_release(
+            [figure],
+            page_count=2,
+            intentionally_excluded_pages=[1],
+            non_text_objects=[{"id": "shared-id", "page": 1}],
+        )
+
+        self.assertTrue(any(item.code == "missing-non-text-object-disposition" for item in report.items))
+
+    def test_malformed_non_text_bbox_becomes_blocking_disposition(self):
+        divider = SemanticBlock(
+            "divider",
+            {},
+            [Provenance(page=1, bbox=(20, 100, 30, 110), reading_order=0)],
+            0.98,
+            ["vector-geometry"],
+        )
+
+        report = validate_release(
+            [divider],
+            page_count=1,
+            non_text_objects=[{"page": 1, "bbox": ["bad", 100, 30, 110]}],
+        )
+
+        self.assertTrue(any(item.code == "missing-non-text-object-disposition" for item in report.items))
+
+    def test_ordinary_link_targets_must_resolve(self):
+        paragraph = SemanticBlock(
+            "paragraph",
+            {"text": "See appendix", "links": [{"target_page": 2, "bbox": [10, 20, 80, 40], "text": "appendix"}]},
+            [Provenance(page=1, bbox=(10, 20, 100, 40), reading_order=0)],
+            0.98,
+            ["internal-link-target"],
+        )
+
+        missing = validate_release([paragraph], page_count=2, intentionally_excluded_pages=[2])
+        resolved = validate_release(
+            [paragraph],
+            page_count=2,
+            intentionally_excluded_pages=[2],
+            reader_targets={"section-2"},
+            page_targets={2: "section-2"},
+        )
+
+        self.assertFalse(missing.releasable)
+        self.assertTrue(any(item.code == "unresolved-link-target" for item in missing.items))
+        self.assertTrue(resolved.releasable, [item.to_dict() for item in resolved.items])
+
     def test_asset_integrity_blocks_missing_and_mismatched_assets(self):
         figure = SemanticBlock(
             "figure",
