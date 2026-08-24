@@ -83,6 +83,18 @@ class ValidationTests(unittest.TestCase):
         self.assertFalse(report.releasable)
         self.assertTrue(any(item.code == "unresolved-contents-target" for item in report.items))
 
+    def test_invalid_reader_target_grammar_blocks_even_known_targets(self):
+        contents = SemanticBlock(
+            "contents",
+            {"entries": [{"title": "Unsafe", "target": "bad target"}]},
+            [Provenance(page=1, bbox=(1, 2, 3, 4), reading_order=0)],
+            0.98,
+            ["internal-link-target"],
+        )
+        report = validate_release([contents], page_count=1, reader_targets={"bad target"})
+        self.assertFalse(report.releasable)
+        self.assertTrue(any(item.code == "invalid-reader-target" for item in report.items))
+
     def test_form_inventory_and_field_relationships_block_release(self):
         form = SemanticBlock(
             "form",
@@ -107,6 +119,17 @@ class ValidationTests(unittest.TestCase):
         self.assertFalse(report.releasable)
         self.assertTrue(any(item.code == "missing-form-inventory" for item in report.items))
 
+    def test_form_requires_root_title_and_inventory_without_nested_rows(self):
+        forms = [
+            SemanticBlock("form", {"title": " ", "fields": [{"label": "Income"}]}, [Provenance(page=1, bbox=(1, 2, 3, 4), reading_order=0)], 0.98, ["label-field-relationships"]),
+            SemanticBlock("form", {"title": "Budget", "fields": [], "rows": []}, [Provenance(page=1, bbox=(1, 2, 3, 4), reading_order=1)], 0.98, ["label-field-relationships"]),
+            SemanticBlock("form", {"title": "Budget", "worksheet": {"rows": [{"label": "Hidden"}]}}, [Provenance(page=1, bbox=(1, 2, 3, 4), reading_order=2)], 0.98, ["label-field-relationships"]),
+        ]
+        report = validate_release(forms, page_count=1)
+        self.assertFalse(report.releasable)
+        codes = {item.code for item in report.items}
+        self.assertTrue({"missing-form-title", "missing-form-inventory", "unsupported-nested-form-rows"} <= codes)
+
     def test_unaccounted_non_text_object_blocks_release(self):
         report = validate_release([block()], page_count=1, non_text_objects=[{"id": "chart-1", "page": 1}])
         self.assertFalse(report.releasable)
@@ -115,15 +138,15 @@ class ValidationTests(unittest.TestCase):
     def test_asset_integrity_blocks_missing_and_mismatched_assets(self):
         figure = SemanticBlock(
             "figure",
-            {"asset": "figures/chart.png", "alt": "Chart", "sha256": "0" * 64},
+            {"asset": "assets/chart.png", "alt": "Chart", "sha256": "0" * 64},
             [Provenance(page=1, bbox=(1, 2, 3, 4), reading_order=0)],
             0.98,
             ["non-text-object"],
         )
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            (root / "figures").mkdir()
-            (root / "figures" / "chart.png").write_bytes(b"chart")
+            (root / "assets").mkdir()
+            (root / "assets" / "chart.png").write_bytes(b"chart")
             report = validate_release([figure], page_count=1, asset_root=root)
         self.assertFalse(report.releasable)
         self.assertTrue(any(item.code == "asset-sha256-mismatch" for item in report.items))
@@ -131,7 +154,7 @@ class ValidationTests(unittest.TestCase):
     def test_asset_integrity_blocks_missing_assets(self):
         figure = SemanticBlock(
             "figure",
-            {"asset": "figures/missing.png", "alt": "Chart", "sha256": "0" * 64},
+            {"asset": "assets/missing.png", "alt": "Chart", "sha256": "0" * 64},
             [Provenance(page=1, bbox=(1, 2, 3, 4), reading_order=0)],
             0.98,
             ["non-text-object"],
@@ -158,17 +181,30 @@ class ValidationTests(unittest.TestCase):
         self.assertFalse(report.releasable)
         self.assertTrue(any(item.code == "missing-source-text-token" for item in report.items))
 
+    def test_asset_path_must_match_reader_safe_asset_contract(self):
+        figure = SemanticBlock(
+            "figure",
+            {"asset": "figures/chart.png", "alt": "Chart", "sha256": hashlib.sha256(b"chart").hexdigest()},
+            [Provenance(page=1, bbox=(1, 2, 3, 4), reading_order=0)],
+            0.98,
+            ["non-text-object"],
+        )
+        report = validate_release([figure], page_count=1)
+        self.assertFalse(report.releasable)
+        self.assertTrue(any(item.code == "unsafe-reader-asset-path" for item in report.items))
+
     def test_valid_release_passes_extended_gates(self):
         source = [Provenance(page=1, bbox=(1, 2, 3, 4), reading_order=0)]
         contents = SemanticBlock("contents", {"entries": [{"title": "Budget", "target": "section-1"}]}, source, 0.98, ["internal-link-target"])
         form = SemanticBlock("form", {"title": "Budget", "fields": [{"label": "Income", "value": ""}]}, [Provenance(page=1, bbox=(1, 2, 3, 4), reading_order=1)], 0.98, ["label-field-relationships"])
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            asset = root / "chart.png"
+            (root / "assets").mkdir()
+            asset = root / "assets" / "chart.png"
             asset.write_bytes(b"chart")
             figure = SemanticBlock(
                 "figure",
-                {"asset": "chart.png", "alt": "Chart", "sha256": hashlib.sha256(b"chart").hexdigest(), "object_id": "chart-1"},
+                {"asset": "assets/chart.png", "alt": "Chart", "sha256": hashlib.sha256(b"chart").hexdigest(), "object_id": "chart-1"},
                 [Provenance(page=1, bbox=(1, 2, 3, 4), reading_order=2)],
                 0.98,
                 ["non-text-object"],

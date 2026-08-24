@@ -9,6 +9,10 @@ from typing import Iterable
 from .model import ReviewItem, SemanticBlock
 
 
+_READER_ASSET_PATH = re.compile(r"^(?:content-private|assets|images)/[A-Za-z0-9][A-Za-z0-9._/-]*(?:[?#][^\s]*)?$")
+_READER_TARGET = re.compile(r"^[A-Za-z][A-Za-z0-9_.:-]*$")
+
+
 @dataclass
 class ValidationReport:
     releasable: bool
@@ -88,16 +92,24 @@ def validate_release(
                         target = page_target_map.get(int(entry.get("target_page")))
                     except (TypeError, ValueError):
                         target = None
+                if target and not _READER_TARGET.fullmatch(str(target)):
+                    items.append(ReviewItem("invalid-reader-target", "high", block.provenance[0].page if block.provenance else None, f"Contents entry {entry.get('title')!r} has an unsafe reader target."))
                 if not target or str(target) not in targets:
                     unresolved_contents_targets += 1
                     items.append(ReviewItem("unresolved-contents-target", "high", block.provenance[0].page if block.provenance else None, f"Contents entry {entry.get('title')!r} does not resolve to a reader target."))
         if block.kind == "form":
             page = block.provenance[0].page if block.provenance else None
             fields = block.data.get("fields")
-            worksheet = block.data.get("worksheet") if isinstance(block.data.get("worksheet"), dict) else {}
-            rows = block.data.get("rows") or worksheet.get("rows")
-            if not isinstance(fields, list) and not isinstance(rows, list):
-                items.append(ReviewItem("missing-form-inventory", "high", page, f"Form block {position} has no fields or worksheet rows."))
+            rows = block.data.get("rows")
+            worksheet = block.data.get("worksheet")
+            if not str(block.data.get("title") or "").strip():
+                items.append(ReviewItem("missing-form-title", "high", page, f"Form block {position} has no reader-visible title."))
+            if isinstance(worksheet, dict) and isinstance(worksheet.get("rows"), list):
+                items.append(ReviewItem("unsupported-nested-form-rows", "high", page, f"Form block {position} stores rows outside the reader's root-level schema."))
+            valid_fields = [field for field in fields if isinstance(field, dict) and str(field.get("label") or "").strip()] if isinstance(fields, list) else []
+            valid_rows = [row for row in rows if isinstance(row, dict) and str(row.get("label") or "").strip()] if isinstance(rows, list) else []
+            if not valid_fields and not valid_rows:
+                items.append(ReviewItem("missing-form-inventory", "high", page, f"Form block {position} has no valid root-level fields or worksheet rows."))
             for field in fields if isinstance(fields, list) else []:
                 if not isinstance(field, dict) or not str(field.get("label") or "").strip():
                     items.append(ReviewItem("missing-form-field-label", "high", page, f"Form block {position} has an unlabelled field."))
@@ -159,13 +171,16 @@ def _validate_non_text_objects(items: list[ReviewItem], figures: list[tuple[int 
 
 
 def _validate_assets(items: list[ReviewItem], figures: list[tuple[int | None, dict]], asset_root: str | Path | None) -> None:
-    if asset_root is None:
-        return
-    root = Path(asset_root).resolve()
+    root = Path(asset_root).resolve() if asset_root is not None else None
     for page, data in figures:
         asset = data.get("asset") or data.get("src")
         if not isinstance(asset, str) or not asset.strip():
             items.append(ReviewItem("missing-asset", "high", page, "Figure has no asset path."))
+            continue
+        if not _READER_ASSET_PATH.fullmatch(asset) or ".." in asset or "\\" in asset or "//" in asset:
+            items.append(ReviewItem("unsafe-reader-asset-path", "high", page, f"Figure asset {asset!r} is outside the reader's safe asset contract."))
+            continue
+        if root is None:
             continue
         try:
             path = (root / asset).resolve()
