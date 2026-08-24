@@ -329,11 +329,12 @@ _PROFILE_KEYS = {
 }
 _OVERRIDE_KEYS = {"role_hint", "text", "alt", "caption", "metadata"}
 _OVERRIDE_METADATA_KEYS = {
-    "attribution", "discretionary_hyphen", "level", "list_continuation", "table_continuation", "target",
+    "attribution", "discretionary_hyphen", "level", "list_continuation", "semantic_exclusion",
+    "table_continuation", "target",
 }
 _ROLE_HINTS = {
-    "contents", "contents_subtitle", "divider", "figure", "form", "heading", "index_entry", "list_continuation",
-    "list_item", "non_text_object", "paragraph", "quotation", "table", "testimonial",
+    "contents", "contents_subtitle", "divider", "figure", "form", "furniture", "heading", "index_entry",
+    "list_continuation", "list_item", "non_text_object", "paragraph", "quotation", "table", "testimonial",
 }
 
 
@@ -414,7 +415,7 @@ def _validate_record_overrides(value: object) -> list[dict[str, Any]]:
                 not isinstance(metadata["target"], str) or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_.:-]*", metadata["target"])
             ):
                 raise ValueError(f"record_overrides item {position} has an invalid reader target.")
-            for key in ("discretionary_hyphen", "list_continuation", "table_continuation"):
+            for key in ("discretionary_hyphen", "list_continuation", "semantic_exclusion", "table_continuation"):
                 if key in metadata and not isinstance(metadata[key], bool):
                     raise ValueError(f"record_overrides item {position} metadata {key} must be boolean.")
             if "attribution" in metadata and not isinstance(metadata["attribution"], str):

@@ -457,6 +457,15 @@ def _can_continue_list(group: list[ExtractionRecord], candidate: ExtractionRecor
     )
 
 
+def _participates_in_semantic_adjacency(record: ExtractionRecord) -> bool:
+    if record.role_hint == "furniture":
+        return False
+    return not (
+        record.role_hint == "non_text_object"
+        and record.metadata.get("semantic_exclusion") is True
+    )
+
+
 def classify_records(records: Iterable[ExtractionRecord]) -> list[SemanticBlock]:
     """Convert positioned extraction records to deterministic semantic blocks.
 
@@ -464,7 +473,10 @@ def classify_records(records: Iterable[ExtractionRecord]) -> list[SemanticBlock]
     text heuristics cover ordinary headings, lists, and index entries. Ambiguous
     layout remains a paragraph for later validation/review.
     """
-    source = sorted(records, key=lambda item: (item.page, item.reading_order, item.bbox, item.text))
+    source = sorted(
+        (record for record in records if _participates_in_semantic_adjacency(record)),
+        key=lambda item: (item.page, item.reading_order, item.bbox, item.text),
+    )
     table_review_evidence: dict[int, str] = {}
     for position in range(len(source) - 1):
         first, second = source[position], source[position + 1]
