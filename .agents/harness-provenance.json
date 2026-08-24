@@ -4,7 +4,7 @@
   "files": [
     {
       "path": "AGENTS.md",
-      "sha256": "7516276428e307a22d48b067f3f256a541e0cbf06cd318ce3083a34f7f1f50b3"
+      "sha256": "a19c265e4a8dc9edd2ea7d87bcbc5ec5310d2dd62566736abe7d37152fc9004d"
     },
     {
       "path": "CLAUDE.md",
@@ -20,7 +20,7 @@
     },
     {
       "path": "MAP.md",
-      "sha256": "365acf331c2791e75861a3e0091fdbadc83657458236f0f43c43659c89e57b9e"
+      "sha256": "5618ff5229440f37152df59be5ec67149b1d7c7ec2e0dd0a599f282e85e9b41f"
     },
     {
       "path": "MEMORY.md",

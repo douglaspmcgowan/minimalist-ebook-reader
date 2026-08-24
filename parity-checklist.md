@@ -31,10 +31,12 @@ Release rule: every source page has semantic coverage or an approved disposition
 - [x] Desktop and 390px browser verification passes against the assembled local package.
 - [x] The corrected protected Vercel preview passes remote hashes, browser checks, and credential cleanup.
 
-## Current evidence
+## Current branch evidence
 
-- Generic converter suite: 62 tests passing.
+- Generic converter suite: 97 tests passing.
 - Private package suite: 35 tests passing plus verification-only integrity.
-- Reader suite: 22 tests passing.
+- Reader suite: 28 tests passing.
 - Private verification report: all gates passing.
 - Independent page reviews: 229/229 pages approved with zero findings.
+
+Re-count the public suites after any later integration lane lands.
