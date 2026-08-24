@@ -56,7 +56,7 @@ The ignored source PDF enters the semantic converter. Layout extraction creates 
 
 - The ignored private edition contains 21 sections, 229 page-coverage records, 945 semantic blocks, 33 cropped figures, 9 tables, 28 forms, 11 index blocks, and zero default-flow facsimiles.
 - The latest verified account-protected preview is `https://boundaries-reader-mgdlai4nb-douglas-mcgowans-projects.vercel.app`.
-- Sixty-six public converter tests, 27 reader tests, 35 private package tests, verification-only integrity, three disjoint page reviews, and desktop/390px checks are the current release evidence; `TASK.md` records the results.
+- Ninety-seven public converter tests, 27 reader tests, 35 private package tests, verification-only integrity, three disjoint page reviews, and desktop/390px checks are the current release evidence; `TASK.md` records the results.
 
 ## Verification commands
 
@@ -64,8 +64,8 @@ Run from `C:\Users\dougl\projects\boundaries-reader` in PowerShell on the curren
 
 ```powershell
 & 'C:\Users\dougl\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe' -m unittest discover -s tests/pdf_to_ebook -p 'test_*.py' -v
-node --test tests/*.test.js
-node --check app.js
+& 'C:\Users\dougl\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe' --test tests/*.test.js
+& 'C:\Users\dougl\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe' --check app.js
 git diff --check
 pwsh -NoProfile -File 'C:\Users\dougl\.agents\tools\Manage-Harness.ps1' -Action VerifyProject -Repository 'C:\Users\dougl\projects\boundaries-reader'
 ```

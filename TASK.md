@@ -29,12 +29,13 @@ Close the generic PDF-to-ebook release gaps found by the 2026-08-24 independent 
 - [x] T3 — Emitted deterministic reader-loadable chapters and added blocking gates for targets, forms, non-text objects, review metadata, token coverage, and asset integrity.
 - [x] T4 — Integrated and independently rereviewed every fix; the final cross-lane review reported no Critical, Important, or Minor findings.
 - [x] T6 — Closed whole-branch reader contract gaps: singular provenance-bearing opening titles, complete ordinary-link targets and rendering, source/edition-bound progress, and current harness routes.
+- [x] T7 — Closed the final whole-branch release findings: private generated-output guards, serialized atomic publication, stale-asset replacement, mandatory vector inventory, rotated multi-column links, accessible inherited widgets, and object-scoped approvals.
 
 ## Verification
 
-- Public: 66 Python converter tests and 27 Node reader tests pass; `node --check app.js` and `git diff --check` pass. `MAP.md` owns the exact commands.
+- Public: 97 Python converter tests and 27 Node reader tests pass; `node --check app.js` and `git diff --check` pass. `MAP.md` owns the exact commands.
 - Private: 35 package tests and `import-book.py --verify-only` pass with 229 assets, 21 sections, 945 blocks, zero facsimiles, and unchanged SHA-256 `1F785731FF2F840A404573DEDA9E94CA9943DEEBD4ECD19204CF638271EC315D`.
-- Security: staged Gitleaks and the Git/Vercel private-local ignore checks pass.
+- Security: full-history Gitleaks and the Git/Vercel private-local ignore checks pass.
 - Interface: desktop and 390px reading, contents navigation, resume, settings, pager, containment, and current-origin console checks pass. The detector reports only the two incumbent warnings recorded by the design contract.
 - Project: both `VerifyProject` and `Test-AgentProjectState.cmd` pass.
 

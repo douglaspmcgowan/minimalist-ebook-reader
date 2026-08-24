@@ -24,7 +24,7 @@ Agents may create local commits for in-scope work without asking. Never push, me
 1. Read this file, current task state, recent `LOG.md`, and `INTENT.md` when present.
 2. Run `git status --short --branch`, inspect worktrees, then read `MAP.md` and `DESIGN.md` when relevant.
 
-A project's remote is its truth. Pull before editing and treat work as unfinished while `git status` is dirty or `git log origin/main..HEAD` is non-empty.
+A project's remote is its truth. Pull before editing and treat work as unfinished while `git status` is dirty or `git log origin/codex/finish-other-session..HEAD` is non-empty.
 
 3. Read what other agents filed against this project before choosing work. Enrolled: `Add-ProjectIntake.ps1 -List`, or the generated `BACKBURNER.md`. Legacy: the `agent-harness:intake:v1` block. The session-start hook surfaces open intake in both modes where the hooks are installed. `Get-WorkResume.ps1` never enumerates the queue. Reject an item with its reason; delete nothing to shrink a count.
 
