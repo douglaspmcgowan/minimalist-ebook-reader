@@ -72,6 +72,16 @@ class SemanticClassificationTests(unittest.TestCase):
 
         self.assertNotIn("contents", [block.kind for block in blocks])
 
+    def test_malformed_link_entries_and_targets_do_not_abort_classification(self):
+        records = [
+            ExtractionRecord(page=1, bbox=(72, 100, 100, 120), reading_order=0, text="Bad entry", links=["bad"]),
+            ExtractionRecord(page=1, bbox=(72, 124, 100, 144), reading_order=1, text="Bad target", links=[{"target_page": "wrong"}]),
+        ]
+
+        blocks = classify_records(records)
+
+        self.assertEqual([block.kind for block in blocks], ["paragraph", "paragraph"])
+
     def test_distant_internal_links_remain_separate_paragraphs(self):
         linked = [
             ExtractionRecord(page=1, bbox=(72, 100, 500, 120), reading_order=0, text="See chapter", links=[{"target_page": 2}]),

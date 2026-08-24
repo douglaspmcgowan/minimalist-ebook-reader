@@ -130,13 +130,20 @@ def _vector_regions(page: Any, table_boxes: list[tuple[float, float, float, floa
     return sorted(regions, key=lambda bbox: (bbox[1], bbox[0], bbox[3], bbox[2]))
 
 
-def _logical_rotated_spans(page: Any) -> list[dict[str, Any]]:
-    rotation = int(getattr(page, "rotation", 0) or 0) % 360
-    if rotation == 0:
-        return page.extract_words(extra_attrs=["fontname", "size"], keep_blank_chars=False)
+def _character_gap(previous: dict[str, Any], character: dict[str, Any], rotation: int) -> float:
+    if rotation == 90:
+        return float(character["top"]) - float(previous["bottom"])
+    if rotation == 270:
+        return float(previous["top"]) - float(character["bottom"])
+    if rotation == 180:
+        return float(previous["x0"]) - float(character["x1"])
+    return float(character["x0"]) - float(previous["x1"])
+
+
+def _character_lines(characters: list[dict[str, Any]], rotation: int) -> list[list[dict[str, Any]]]:
     groups: list[list[dict[str, Any]]] = []
     anchors: list[float] = []
-    for character in page.chars:
+    for character in characters:
         anchor = float(character["x0"] if rotation in {90, 270} else character["top"])
         match = next((index for index, value in enumerate(anchors) if abs(anchor - value) <= 4.0), None)
         if match is None:
@@ -144,50 +151,63 @@ def _logical_rotated_spans(page: Any) -> list[dict[str, Any]]:
             groups.append([])
             match = len(groups) - 1
         groups[match].append(character)
+    return groups
+
+
+def _character_text(characters: list[dict[str, Any]], rotation: int) -> str:
+    pieces: list[str] = []
+    previous = None
+    for character in characters:
+        if previous is not None and _character_gap(previous, character, rotation) > 1.0 and pieces and not pieces[-1].endswith(" "):
+            pieces.append(" ")
+        pieces.append(str(character.get("text") or ""))
+        previous = character
+    return re.sub(r"\s+", " ", "".join(pieces)).strip()
+
+
+def _logical_rotated_spans(page: Any) -> list[dict[str, Any]]:
+    rotation = int(getattr(page, "rotation", 0) or 0) % 360
+    if rotation == 0:
+        return page.extract_words(extra_attrs=["fontname", "size"], keep_blank_chars=False)
     spans = []
-    for group in groups:
-        pieces: list[str] = []
+    for line in _character_lines(page.chars, rotation):
+        runs: list[list[dict[str, Any]]] = [[]]
         previous = None
-        for character in group:
-            if previous is not None:
-                if rotation == 90:
-                    gap = float(character["top"]) - float(previous["bottom"])
-                elif rotation == 270:
-                    gap = float(previous["top"]) - float(character["bottom"])
-                else:
-                    gap = float(previous["x0"]) - float(character["x1"])
-                if gap > 1.0 and pieces and not pieces[-1].endswith(" "):
-                    pieces.append(" ")
-            pieces.append(str(character.get("text") or ""))
+        for character in line:
+            if previous is not None and _character_gap(previous, character, rotation) > 72.0:
+                runs.append([])
+            runs[-1].append(character)
             previous = character
-        text = re.sub(r"\s+", " ", "".join(pieces)).strip()
-        if not text:
-            continue
-        spans.append({
-            "text": text,
-            "x0": min(float(item["x0"]) for item in group),
-            "x1": max(float(item["x1"]) for item in group),
-            "top": min(float(item["top"]) for item in group),
-            "bottom": max(float(item["bottom"]) for item in group),
-            "fontname": str(group[0].get("fontname") or ""),
-            "size": sum(
-                float(item["x1"] - item["x0"] if rotation in {90, 270} else item["bottom"] - item["top"])
-                for item in group
-            ) / len(group),
-        })
+        for group in runs:
+            text = _character_text(group, rotation)
+            if not text:
+                continue
+            spans.append({
+                "text": text,
+                "x0": min(float(item["x0"]) for item in group),
+                "x1": max(float(item["x1"]) for item in group),
+                "top": min(float(item["top"]) for item in group),
+                "bottom": max(float(item["bottom"]) for item in group),
+                "fontname": str(group[0].get("fontname") or ""),
+                "size": sum(
+                    float(item["x1"] - item["x0"] if rotation in {90, 270} else item["bottom"] - item["top"])
+                    for item in group
+                ) / len(group),
+            })
     return spans
 
 
 def _anchor_text(page: Any, bbox: tuple[float, float, float, float]) -> str:
     characters = [
-        str(character.get("text") or "")
+        character
         for character in page.chars
         if _intersection(
             (float(character["x0"]), float(character["top"]), float(character["x1"]), float(character["bottom"])),
             bbox,
         )
     ]
-    return re.sub(r"\s+", " ", "".join(characters)).strip()
+    rotation = int(getattr(page, "rotation", 0) or 0) % 360
+    return " ".join(filter(None, (_character_text(line, rotation) for line in _character_lines(characters, rotation))))
 
 
 def _annotation_bbox(annotation: Any, page: Any) -> tuple[float, float, float, float] | None:
@@ -251,22 +271,28 @@ def _annotation_group_id(annotation: Any) -> str:
     return identity or str(_inherited_annotation_value(annotation, "/T") or "anonymous")
 
 
-def _widget_options(annotation: Any, field_type: str) -> list[str]:
-    options: set[str] = set()
+def _widget_options(annotation: Any, field_type: str, field_flags: int) -> list[str]:
+    options: list[str] = []
+
+    def append(value: Any) -> None:
+        text = str(value or "").lstrip("/").strip()
+        if text and text not in options:
+            options.append(text)
+
     inherited = _inherited_annotation_value(annotation, "/Opt")
     if isinstance(inherited, (list, tuple)):
         for option in inherited:
-            value = option[0] if isinstance(option, (list, tuple)) and option else option
-            text = str(value or "").lstrip("/").strip()
-            if text:
-                options.add(text)
-    if field_type == "button":
+            value = option[1] if isinstance(option, (list, tuple)) and len(option) >= 2 else option[0] if isinstance(option, (list, tuple)) and option else option
+            append(value)
+    if field_type == "button" and not field_flags & (1 << 16):
         appearance = annotation.get("/AP") or {}
         normal = appearance.get("/N") if hasattr(appearance, "get") else None
         normal = normal.get_object() if hasattr(normal, "get_object") else normal
-        if hasattr(normal, "keys"):
-            options.update(str(value).lstrip("/") for value in normal.keys() if str(value) != "/Off")
-    return sorted(option for option in options if option)
+        if hasattr(normal, "keys") and not hasattr(normal, "get_data"):
+            for value in normal.keys():
+                if str(value) != "/Off":
+                    append(value)
+    return options
 
 
 def _destination_page(reader: PdfReader, destination: Any) -> int | None:
@@ -310,6 +336,7 @@ def _page_annotations(reader: PdfReader, page_number: int) -> tuple[list[dict[st
             tooltip = str(_inherited_annotation_value(annotation, "/TU") or "").strip()
             label = tooltip or name
             field_type = {"/Tx": "text", "/Btn": "button", "/Ch": "choice", "/Sig": "signature"}.get(str(_inherited_annotation_value(annotation, "/FT") or ""), "unknown")
+            field_flags = int(_inherited_annotation_value(annotation, "/Ff") or 0)
             widget = {
                 "bbox": bbox,
                 "group_id": _annotation_group_id(annotation),
@@ -320,9 +347,9 @@ def _page_annotations(reader: PdfReader, page_number: int) -> tuple[list[dict[st
                     "label": label,
                     "type": field_type,
                     "value": str(_inherited_annotation_value(annotation, "/V") or ""),
-                    "required": bool(int(_inherited_annotation_value(annotation, "/Ff") or 0) & 2),
+                    "required": bool(field_flags & 2),
                 },
-                "options": _widget_options(annotation, field_type),
+                "options": _widget_options(annotation, field_type, field_flags),
             }
             if not tooltip:
                 widget["review"] = {
@@ -335,17 +362,19 @@ def _page_annotations(reader: PdfReader, page_number: int) -> tuple[list[dict[st
     return links, widgets
 
 
-def _ambiguous_reading_order(candidates: list[dict[str, Any]], page_width: float) -> bool:
+def _ambiguous_reading_order(candidates: list[dict[str, Any]], page_width: float, rotation: int = 0) -> bool:
     text = [candidate for candidate in candidates if candidate["text"]]
     if len(text) >= 4:
-        ordered = sorted(text, key=lambda item: item["bbox"][0])
-        gaps = [(ordered[index + 1]["bbox"][0] - item["bbox"][0], index) for index, item in enumerate(ordered[:-1])]
+        column_axis = 1 if rotation in {90, 270} else 0
+        flow_start, flow_end = ((0, 2) if rotation in {90, 270} else (1, 3))
+        ordered = sorted(text, key=lambda item: item["bbox"][column_axis])
+        gaps = [(ordered[index + 1]["bbox"][column_axis] - item["bbox"][column_axis], index) for index, item in enumerate(ordered[:-1])]
         gap, index = max(gaps, default=(0.0, -1))
         if gap >= max(72.0, page_width * 0.15):
             left, right = ordered[:index + 1], ordered[index + 1:]
             if len(left) >= 2 and len(right) >= 2:
-                left_top, left_bottom = min(item["bbox"][1] for item in left), max(item["bbox"][3] for item in left)
-                right_top, right_bottom = min(item["bbox"][1] for item in right), max(item["bbox"][3] for item in right)
+                left_top, left_bottom = min(item["bbox"][flow_start] for item in left), max(item["bbox"][flow_end] for item in left)
+                right_top, right_bottom = min(item["bbox"][flow_start] for item in right), max(item["bbox"][flow_end] for item in right)
                 if max(left_top, right_top) < min(left_bottom, right_bottom):
                     return True
     return any(
@@ -505,7 +534,8 @@ def extract_pdf(
                     field = dict(widget["field"])
                     key = str(field.get("name") or field.get("label") or len(fields_by_name))
                     existing = fields_by_name.setdefault(key, field)
-                    options = sorted(set(existing.get("options", [])) | set(widget.get("options", [])))
+                    options = list(existing.get("options", []))
+                    options.extend(option for option in widget.get("options", []) if option not in options)
                     if options:
                         existing["options"] = options
                 candidates.append({
@@ -517,8 +547,8 @@ def extract_pdf(
                 })
 
             reading_order_candidates = [candidate for candidate in candidates if candidate.get("role_hint") != "non_text_object"]
-            ambiguous = _ambiguous_reading_order(reading_order_candidates, float(page.width))
             rotation = int(getattr(page, "rotation", 0) or 0) % 360
+            ambiguous = _ambiguous_reading_order(reading_order_candidates, float(page.width), rotation)
             for order, candidate in enumerate(sorted(candidates, key=lambda item: _reading_order_key(item, rotation))):
                 metadata = dict(candidate.get("metadata") or {})
                 if ambiguous:

@@ -23,9 +23,14 @@ def _block(kind: str, data: dict, records: list[ExtractionRecord], confidence: f
 
 def _target_page(record: ExtractionRecord) -> int | None:
     for link in record.links:
+        if not isinstance(link, dict):
+            continue
         target = link.get("target_page")
         if target is not None:
-            return int(target)
+            try:
+                return int(target)
+            except (TypeError, ValueError):
+                continue
     return None
 
 
