@@ -30,11 +30,12 @@ Close the generic PDF-to-ebook release gaps found by the 2026-08-24 independent 
 - [x] T4 — Integrated and independently rereviewed every fix; the final cross-lane review reported no Critical, Important, or Minor findings.
 - [x] T6 — Closed whole-branch reader contract gaps: singular provenance-bearing opening titles, complete ordinary-link targets and rendering, source/edition-bound progress, and current harness routes.
 - [x] T7 — Closed the final whole-branch release findings: private generated-output guards, serialized atomic publication, stale-asset replacement, mandatory vector inventory, rotated multi-column links, accessible inherited widgets, and object-scoped approvals.
+- [x] T8 — Closed format-specific integration gaps: page-dimension-aware continuation, explicit reviewed headerless-table continuation, and deduplicated multi-line PDF anchors.
 - [x] T8 — Bound ordinary reader links to their extracted anchor text with accessible source-label fallbacks, removed the private source digest from public task state, and regenerated the harness projection against the repository's `origin/main` default route.
 
 ## Verification
 
-- Public: 114 Python converter tests and 28 Node reader tests pass; `node --check app.js` and `git diff --check` pass. `MAP.md` owns the exact commands.
+- Public: 134 Python converter tests and 30 Node reader tests pass; `node --check app.js` and `git diff --check` pass. `MAP.md` owns the exact commands.
 - Private: 35 package tests and `import-book.py --verify-only` pass with 229 assets, 21 sections, 945 blocks, zero facsimiles, and source identity matching the ignored local manifest.
 - Security: full-history Gitleaks and the Git/Vercel private-local ignore checks pass.
 - Interface: desktop and 390px reading, contents navigation, resume, settings, pager, containment, and current-origin console checks pass. The detector reports only the two incumbent warnings recorded by the design contract.

@@ -33,7 +33,7 @@ Release rule: every source page has semantic coverage or an approved disposition
 
 ## Current branch evidence
 
-- Generic converter suite: 114 tests passing.
+- Generic converter suite: 134 tests passing.
 - Private package suite: 35 tests passing plus verification-only integrity.
 - Reader suite: 28 tests passing.
 - Private verification report: all gates passing.
