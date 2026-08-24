@@ -50,16 +50,25 @@ product contract; `MAP.md` routes the implementation and `TASK.md` owns current
 verification.
 
 ```powershell
-python -m tools.pdf_to_ebook.cli input.pdf book.json --asset-root . --report conversion-report.json
+python -m tools.pdf_to_ebook.cli input.pdf book.json --asset-root . --report conversion-report.json --book-profile profile.json
 ```
 
 This private-local command writes `book.json`, `assets/`, and
 `conversion-report.json`; repository-root Git and Vercel exclusions guard all
-three outputs from public releases. Conversions sharing an output or asset root
-run serially, and each successful run replaces the package and its complete
-managed asset set. An explicitly authorized private preview uses an allowlisted
-staging package and Vercel Authentication. See `MAP.md` for the current
-protected route and `TASK.md` for release gates.
+three outputs from public releases. The optional schema-version-1 profile may
+supply narrow `record_overrides`, approved `review_items`,
+`intentionally_excluded_pages`, `non_text_objects`, and
+`expected_source_tokens`. The same release inputs are available individually as
+`--review-items`, `--intentionally-excluded-pages`, `--non-text-objects`, and
+`--expected-source-tokens` JSON files. Conversions sharing an output, report, or
+asset root run serially. Figure files publish under a content-addressed immutable
+generation before the package swaps atomically; stale generations are recovered
+or removed after a matching commit. A releasable report appears only after its
+package and complete managed asset generation commit. Interrupted staging stays
+under the Git- and deployment-excluded `.pdf-to-ebook-staging/` boundary and is
+recovered by the next locked conversion. An explicitly authorized private
+preview uses an allowlisted staging package and Vercel Authentication. See
+`MAP.md` for the current protected route and `TASK.md` for release gates.
 
 ## ©️ Copyright
 
