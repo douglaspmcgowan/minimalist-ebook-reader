@@ -8,6 +8,7 @@ from .model import ExtractionRecord, SemanticBlock
 
 _LIST = re.compile(r"^\s*(?P<marker>(?:\d+[.)]|[-*•]))\s+(?P<text>.+)$")
 _INDEX = re.compile(r"^\s*(?P<term>[^,]+),\s*(?P<locators>\d+(?:\s*,\s*\d+)*)\s*$")
+_OPENING_PUNCTUATION = "\"'“‘«‹([{"
 
 
 def _block(kind: str, data: dict, records: list[ExtractionRecord], confidence: float, *evidence: str) -> SemanticBlock:
@@ -86,6 +87,10 @@ def _same_page_flow(first: ExtractionRecord, second: ExtractionRecord) -> bool:
     return _same_column(first, second) and _nearby_line(first, second)
 
 
+def _initial_text_character(text: str) -> str:
+    return text.lstrip().lstrip(_OPENING_PUNCTUATION).lstrip()[:1]
+
+
 def _cross_page_flow(first: ExtractionRecord, second: ExtractionRecord) -> bool:
     return (
         second.page == first.page + 1
@@ -100,7 +105,7 @@ def _can_join_paragraph_line(first: ExtractionRecord, second: ExtractionRecord) 
     if second.page == first.page:
         return _same_page_flow(first, second) and not (
             re.search(r"[.!?…:;][\"')\]]*$", first.text.strip())
-            and second.text.lstrip()[:1].isupper()
+            and _initial_text_character(second.text).isupper()
         )
     return (
         _same_column(first, second)
