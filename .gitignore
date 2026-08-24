@@ -46,6 +46,8 @@ taskstate/
 # Copyrighted source material — NEVER commit (personal/local use only)
 content-private/
 book.json
+/assets/
+/conversion-report.json
 *.pdf
 
 # OS / editor
