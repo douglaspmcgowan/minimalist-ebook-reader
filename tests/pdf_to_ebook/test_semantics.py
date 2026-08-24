@@ -297,6 +297,89 @@ class SemanticClassificationTests(unittest.TestCase):
         self.assertEqual([source.page for source in blocks[0].provenance], [1, 2])
         self.assertIn("cross-page-continuation", blocks[0].evidence)
 
+    def test_approved_headerless_table_continuation_promotes_inferred_first_row_to_data(self):
+        records = [
+            ExtractionRecord(
+                page=1,
+                bbox=(72, 620, 540, 720),
+                reading_order=4,
+                role_hint="table",
+                table={"caption": "Quarterly totals", "headers": ["Quarter", "Amount"], "rows": [["Q1", "$10"]]},
+                metadata={"table_header_source": "inferred-first-row"},
+            ),
+            ExtractionRecord(
+                page=2,
+                bbox=(72, 72, 540, 160),
+                reading_order=0,
+                role_hint="table",
+                table={"caption": None, "headers": ["Q2", "$12"], "rows": [["Q3", "$14"]]},
+                metadata={"table_header_source": "inferred-first-row", "table_continuation": True},
+            ),
+        ]
+
+        blocks = classify_records(records)
+
+        self.assertEqual(len(blocks), 1)
+        self.assertEqual(blocks[0].data, {
+            "caption": "Quarterly totals",
+            "headers": ["Quarter", "Amount"],
+            "rows": [["Q1", "$10"], ["Q2", "$12"], ["Q3", "$14"]],
+        })
+        self.assertIn("approved-headerless-continuation", blocks[0].evidence)
+
+    def test_uncertain_headerless_table_continuation_is_preserved_for_review(self):
+        records = [
+            ExtractionRecord(
+                page=1,
+                bbox=(72, 620, 540, 720),
+                reading_order=4,
+                role_hint="table",
+                table={"caption": "Quarterly totals", "headers": ["Quarter", "Amount"], "rows": [["Q1", "$10"]]},
+                metadata={"table_header_source": "inferred-first-row"},
+            ),
+            ExtractionRecord(
+                page=2,
+                bbox=(72, 72, 540, 160),
+                reading_order=0,
+                role_hint="table",
+                table={"caption": None, "headers": ["Q2", "$12"], "rows": [["Q3", "$14"]]},
+                metadata={"table_header_source": "inferred-first-row"},
+            ),
+        ]
+
+        blocks = classify_records(records)
+
+        self.assertEqual(len(blocks), 2)
+        self.assertEqual(blocks[1].data["headers"], ["Q2", "$12"])
+        self.assertLess(blocks[1].confidence, 0.7)
+        self.assertIn("ambiguous-table-continuation", blocks[1].evidence)
+
+    def test_explicit_continuation_does_not_merge_a_new_captioned_table(self):
+        records = [
+            ExtractionRecord(
+                page=1,
+                bbox=(72, 620, 540, 720),
+                reading_order=4,
+                role_hint="table",
+                table={"caption": "Revenue", "headers": ["Quarter", "Amount"], "rows": [["Q1", "$10"]]},
+                metadata={"table_header_source": "inferred-first-row"},
+            ),
+            ExtractionRecord(
+                page=2,
+                bbox=(72, 72, 540, 160),
+                reading_order=0,
+                role_hint="table",
+                table={"caption": "People", "headers": ["Name", "Role"], "rows": [["A", "Editor"]]},
+                metadata={"table_header_source": "inferred-first-row", "table_continuation": True},
+            ),
+        ]
+
+        blocks = classify_records(records)
+
+        self.assertEqual([block.data["caption"] for block in blocks], ["Revenue", "People"])
+        self.assertLess(blocks[1].confidence, 0.7)
+        self.assertIn("conflicting-table-continuation", blocks[1].evidence)
+
     def test_joins_table_across_proportionally_aligned_mixed_page_sizes(self):
         records = [
             ExtractionRecord(

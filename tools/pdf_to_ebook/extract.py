@@ -508,7 +508,13 @@ def extract_pdf(
                 rows = table.extract() or []
                 headers = [str(cell or "").strip() for cell in rows[0]] if rows else []
                 body = [[str(cell or "").strip() for cell in row] for row in rows[1:]]
-                candidates.append({"bbox": bbox, "role_hint": "table", "table": {"caption": None, "headers": headers, "rows": body}, "text": ""})
+                candidates.append({
+                    "bbox": bbox,
+                    "role_hint": "table",
+                    "table": {"caption": None, "headers": headers, "rows": body},
+                    "text": "",
+                    "metadata": {"table_header_source": "inferred-first-row"},
+                })
 
             words = _logical_rotated_spans(page)
             line_groups = [[word] for word in words] if int(getattr(page, "rotation", 0) or 0) % 360 else _group_words(words)

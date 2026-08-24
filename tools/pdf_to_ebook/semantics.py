@@ -264,29 +264,76 @@ def _table_columns(table: dict) -> int:
     return widths[0] if widths and all(width == widths[0] for width in widths) else 0
 
 
-def _can_join_table(first: ExtractionRecord, second: ExtractionRecord) -> bool:
+def _table_pair_geometry(first: ExtractionRecord, second: ExtractionRecord) -> bool:
+    return _same_column(first, second) and _same_right_edge(first, second) and _cross_page_flow(first, second)
+
+
+def _approved_headerless_table_continuation(first: ExtractionRecord, second: ExtractionRecord) -> bool:
+    return bool(
+        _explicit_continuation(first, second, "table")
+        and second.metadata.get("table_header_source") == "inferred-first-row"
+        and first.table
+        and second.table
+        and first.table.get("headers") != second.table.get("headers")
+    )
+
+
+def _ambiguous_headerless_table_continuation(first: ExtractionRecord, second: ExtractionRecord) -> bool:
     if not isinstance(first.table, dict) or not isinstance(second.table, dict):
         return False
-    if not (_same_column(first, second) and _same_right_edge(first, second) and _cross_page_flow(first, second)):
+    if _explicit_continuation(first, second, "table") or not _table_pair_geometry(first, second):
         return False
     first_headers = first.table.get("headers")
     second_headers = second.table.get("headers")
-    if not isinstance(first_headers, list) or not first_headers or first_headers != second_headers:
+    return bool(
+        isinstance(first_headers, list)
+        and first_headers
+        and isinstance(second_headers, list)
+        and second_headers
+        and first_headers != second_headers
+        and second.metadata.get("table_header_source") == "inferred-first-row"
+        and not second.table.get("caption")
+        and _table_columns(first.table)
+        and _table_columns(first.table) == _table_columns(second.table)
+    )
+
+
+def _can_join_table(first: ExtractionRecord, second: ExtractionRecord) -> bool:
+    if not isinstance(first.table, dict) or not isinstance(second.table, dict):
+        return False
+    if not _table_pair_geometry(first, second):
+        return False
+    first_headers = first.table.get("headers")
+    second_headers = second.table.get("headers")
+    if not isinstance(first_headers, list) or not first_headers or not isinstance(second_headers, list) or not second_headers:
         return False
     if not _table_columns(first.table) or _table_columns(first.table) != _table_columns(second.table):
         return False
     second_caption = second.table.get("caption")
-    return not second_caption or second_caption == first.table.get("caption") or _explicit_continuation(first, second, "table")
+    if second_caption and second_caption != first.table.get("caption"):
+        return False
+    return first_headers == second_headers or _approved_headerless_table_continuation(first, second)
+
+
+def _conflicting_table_continuation(first: ExtractionRecord, second: ExtractionRecord) -> bool:
+    return bool(
+        isinstance(first.table, dict)
+        and isinstance(second.table, dict)
+        and second.page == first.page + 1
+        and _explicit_continuation(first, second, "table")
+        and not _can_join_table(first, second)
+    )
 
 
 def _table_data(records: list[ExtractionRecord]) -> dict:
     table = dict(records[0].table or {})
-    table["rows"] = [
-        list(row)
-        for record in records
-        for row in (record.table or {}).get("rows", [])
-        if isinstance(row, list)
-    ]
+    rows: list[list] = []
+    for position, record in enumerate(records):
+        record_table = record.table or {}
+        if position and _approved_headerless_table_continuation(records[position - 1], record):
+            rows.append(list(record_table.get("headers", [])))
+        rows.extend(list(row) for row in record_table.get("rows", []) if isinstance(row, list))
+    table["rows"] = rows
     return table
 
 
@@ -388,6 +435,13 @@ def classify_records(records: Iterable[ExtractionRecord]) -> list[SemanticBlock]
     layout remains a paragraph for later validation/review.
     """
     source = sorted(records, key=lambda item: (item.page, item.reading_order, item.bbox, item.text))
+    table_review_evidence: dict[int, str] = {}
+    for position in range(len(source) - 1):
+        first, second = source[position], source[position + 1]
+        if _ambiguous_headerless_table_continuation(first, second):
+            table_review_evidence[id(second)] = "ambiguous-table-continuation"
+        elif _conflicting_table_continuation(first, second):
+            table_review_evidence[id(second)] = "conflicting-table-continuation"
     blocks: list[SemanticBlock] = []
     index = 0
     while index < len(source):
@@ -453,7 +507,21 @@ def classify_records(records: Iterable[ExtractionRecord]) -> list[SemanticBlock]
             evidence = ["table-grid", "role-hint"]
             if len(group) > 1:
                 evidence.append("cross-page-continuation")
-            blocks.append(_block("table", table, group, 0.98 if record.table else 0.65, *evidence))
+            if any(
+                _approved_headerless_table_continuation(group[position - 1], group[position])
+                for position in range(1, len(group))
+            ):
+                evidence.append("approved-headerless-continuation")
+            continuation_review = table_review_evidence.get(id(record))
+            if continuation_review:
+                evidence.append(continuation_review)
+            blocks.append(_block(
+                "table",
+                table,
+                group,
+                0.65 if continuation_review or not record.table else 0.98,
+                *evidence,
+            ))
             continue
         elif hint == "form" or record.form:
             form = dict(record.form or {"title": record.text, "instructions": "", "fields": []})

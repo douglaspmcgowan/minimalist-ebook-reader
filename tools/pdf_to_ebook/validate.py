@@ -83,7 +83,14 @@ def validate_release(
         if not 0 <= block.confidence <= 1:
             items.append(ReviewItem("invalid-confidence", "high", block.provenance[0].page if block.provenance else None, f"Block {position} confidence is outside 0..1."))
         elif block.confidence < 0.7:
-            items.append(ReviewItem("low-confidence-structure", "high", block.provenance[0].page if block.provenance else None, f"Block {position} requires semantic review."))
+            review_code = (
+                "ambiguous-table-continuation"
+                if "ambiguous-table-continuation" in block.evidence
+                else "conflicting-table-continuation"
+                if "conflicting-table-continuation" in block.evidence
+                else "low-confidence-structure"
+            )
+            items.append(ReviewItem(review_code, "high", block.provenance[0].page if block.provenance else None, f"Block {position} requires semantic review."))
         if block.kind == "table":
             headers = block.data.get("headers", [])
             rows = block.data.get("rows", [])

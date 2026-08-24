@@ -163,6 +163,8 @@ class ExtractionTests(unittest.TestCase):
                 [(None, "Before table"), ("table", ""), ("figure", ""), (None, "After figure")],
                 sequence,
             )
+            extracted_table = next(record for record in records if record.role_hint == "table")
+            self.assertEqual(extracted_table.metadata["table_header_source"], "inferred-first-row")
             figure = next(record for record in records if record.role_hint == "figure")
             self.assertEqual(figure.asset, "assets/page-0001-figure-01.png")
             materialized = assets / figure.asset
