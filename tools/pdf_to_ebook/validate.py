@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable
 
-from .model import ReviewItem, SemanticBlock
+from .model import ExtractionRecord, ReviewItem, SemanticBlock
 
 
 _READER_ASSET_PATH = re.compile(r"^(?:content-private|assets|images)/[A-Za-z0-9][A-Za-z0-9._/-]*(?:[?#][^\s]*)?$")
@@ -49,9 +49,11 @@ def validate_release(
     non_text_objects: Iterable[dict] = (),
     asset_root: str | Path | None = None,
     expected_source_tokens: Iterable[str] = (),
+    extraction_records: Iterable[ExtractionRecord] = (),
 ) -> ValidationReport:
     materialized = list(blocks)
     items = list(review_items)
+    items.extend(_extraction_review_items(extraction_records))
     covered: set[int] = set(int(page) for page in intentionally_excluded_pages)
     inventory: dict[str, int] = {}
     targets = {str(target) for target in reader_targets}
@@ -172,6 +174,8 @@ def _validate_non_text_objects(items: list[ReviewItem], figures: list[tuple[int 
 
 def _validate_assets(items: list[ReviewItem], figures: list[tuple[int | None, dict]], asset_root: str | Path | None) -> None:
     root = Path(asset_root).resolve() if asset_root is not None else None
+    if figures and root is None:
+        items.append(ReviewItem("missing-asset-root", "high", None, "Figure integrity requires an explicit asset root."))
     for page, data in figures:
         asset = data.get("asset") or data.get("src")
         if not isinstance(asset, str) or not asset.strip():
@@ -182,8 +186,9 @@ def _validate_assets(items: list[ReviewItem], figures: list[tuple[int | None, di
             continue
         if root is None:
             continue
+        filesystem_asset = re.split(r"[?#]", asset, maxsplit=1)[0]
         try:
-            path = (root / asset).resolve()
+            path = (root / filesystem_asset).resolve()
             path.relative_to(root)
         except (OSError, ValueError):
             items.append(ReviewItem("invalid-asset-path", "high", page, f"Figure asset {asset!r} escapes the asset root."))
@@ -198,6 +203,41 @@ def _validate_assets(items: list[ReviewItem], figures: list[tuple[int | None, di
         actual = hashlib.sha256(path.read_bytes()).hexdigest()
         if actual.lower() != expected.lower():
             items.append(ReviewItem("asset-sha256-mismatch", "high", page, f"Figure asset {asset!r} does not match its SHA-256."))
+
+
+def _extraction_review_items(records: Iterable[ExtractionRecord]) -> list[ReviewItem]:
+    items: list[ReviewItem] = []
+    for record in records:
+        findings = record.metadata.get("review", []) if isinstance(record.metadata, dict) else []
+        if isinstance(findings, dict):
+            findings = [findings]
+        if not isinstance(findings, (list, tuple)):
+            findings = []
+        for finding in findings:
+            if not isinstance(finding, dict):
+                continue
+            details = {
+                key: value
+                for key, value in finding.items()
+                if key not in {"approved", "code", "details", "message", "severity"}
+            }
+            if isinstance(finding.get("details"), dict):
+                details.update(finding["details"])
+            details.update({"bbox": list(record.bbox), "reading_order": record.reading_order})
+            items.append(ReviewItem(
+                code=str(finding.get("code") or "extraction-review"),
+                severity=_extraction_review_severity(finding.get("severity")),
+                page=record.page,
+                message=str(finding.get("message") or "Extraction requires review."),
+                approved=False,
+                details=details,
+            ))
+    return items
+
+
+def _extraction_review_severity(value: object) -> str:
+    severity = str(value or "high").strip().lower()
+    return severity if severity in {"high", "medium", "low"} else "high"
 
 
 def _validate_text_coverage(items: list[ReviewItem], blocks: Iterable[SemanticBlock], expected_tokens: Iterable[str]) -> list[str]:

@@ -95,6 +95,23 @@ test("blockHtml renders escaped headings and paragraphs with optional lead styli
   assert.equal(blockHtml({ t: "p", x: "Later prose" }), "<p>Later prose</p>");
 });
 
+test("blockHtml renders safe internal prose and heading links", () => {
+  const { blockHtml } = loadProgressApi();
+
+  assert.equal(
+    blockHtml({ kind: "paragraph", data: { text: "See <appendix>", links: [{ target: "section-2" }] } }),
+    '<p><a class="chapter__internal-link" href="#section-2">See &lt;appendix&gt;</a></p>',
+  );
+  assert.equal(
+    blockHtml({ kind: "heading", data: { text: "Read next", level: 3, links: [{ target: "section-3" }] } }),
+    '<h3><a class="chapter__internal-link" href="#section-3">Read next</a></h3>',
+  );
+  assert.equal(
+    blockHtml({ kind: "paragraph", data: { text: "Unsafe stays prose", links: [{ target: 'bad" target' }] } }),
+    "<p>Unsafe stays prose</p>",
+  );
+});
+
 test("blockHtml renders testimonials with safe optional attribution", () => {
   const { blockHtml } = loadProgressApi();
 

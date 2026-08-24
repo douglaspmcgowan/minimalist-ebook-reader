@@ -202,7 +202,11 @@ def _figure_asset(page: Any, bbox: tuple[float, float, float, float], output_dir
         metadata["review"] = [{"code": "figure-asset-unmaterialized", "severity": "high", "message": "Figure requires an explicit asset output directory."}]
         return None, metadata
     try:
-        destination = output_dir / filename
+        root = output_dir.resolve()
+        if root.exists() and not root.is_dir():
+            raise ValueError("Asset output root must be a directory.")
+        destination = (root / filename).resolve()
+        destination.relative_to(root)
         destination.parent.mkdir(parents=True, exist_ok=True)
         page.crop(bbox).to_image(resolution=144).save(destination, format="PNG")
         metadata["asset_sha256"] = _sha256(destination)
@@ -210,6 +214,18 @@ def _figure_asset(page: Any, bbox: tuple[float, float, float, float], output_dir
     except (OSError, ValueError) as error:
         metadata["review"] = [{"code": "figure-asset-unmaterialized", "severity": "high", "message": str(error)}]
         return None, metadata
+
+
+def _image_alt(image: dict[str, Any]) -> str | None:
+    stream = image.get("stream")
+    attributes = getattr(stream, "attrs", {})
+    for key, value in attributes.items():
+        if str(key).lstrip("/") not in {"Alt", "ActualText"}:
+            continue
+        text = bytes(value).decode("utf-8", errors="replace") if isinstance(value, bytes) else str(value)
+        if text.strip():
+            return text.strip()
+    return None
 
 
 def _add_review(metadata: dict[str, Any], review: dict[str, Any]) -> None:
@@ -275,7 +291,7 @@ def extract_pdf(
                 bbox = (float(image["x0"]), float(image["top"]), float(image["x1"]), float(image["bottom"]))
                 asset, metadata = _figure_asset(page, bbox, assets, page_number, image_number)
                 metadata["object_name"] = image.get("name")
-                candidates.append({"bbox": bbox, "text": "", "role_hint": "figure", "asset": asset, "metadata": metadata})
+                candidates.append({"bbox": bbox, "text": "", "role_hint": "figure", "asset": asset, "alt": _image_alt(image), "metadata": metadata})
 
             for widget in widgets:
                 candidates.append({
@@ -308,6 +324,7 @@ def extract_pdf(
                     table=candidate.get("table"),
                     form=candidate.get("form"),
                     asset=candidate.get("asset"),
+                    alt=candidate.get("alt"),
                     metadata=metadata,
                 ))
 

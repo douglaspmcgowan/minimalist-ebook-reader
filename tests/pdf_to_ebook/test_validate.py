@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tools.pdf_to_ebook.model import Provenance, ReviewItem, SemanticBlock
+from tools.pdf_to_ebook.model import ExtractionRecord, Provenance, ReviewItem, SemanticBlock
 from tools.pdf_to_ebook.validate import validate_release
 
 
@@ -36,6 +36,65 @@ class ValidationTests(unittest.TestCase):
         report = validate_release([block()], page_count=1, review_items=[unresolved])
         self.assertFalse(report.releasable)
         self.assertEqual(report.unresolved_high_severity, 1)
+
+    def test_preserves_every_extraction_review_finding(self):
+        records = [
+            ExtractionRecord(
+                page=1,
+                bbox=(1, 2, 3, 4),
+                reading_order=0,
+                text="Synthetic prose.",
+                metadata={"review": [
+                    {"code": "uncertain-reading-order", "severity": "high", "message": "Order one.", "object_id": "column-1", "details": {"column": "right"}},
+                    {"code": "missing-figure-materialization", "severity": "high", "message": "Figure one."},
+                ]},
+            ),
+            ExtractionRecord(
+                page=1,
+                bbox=(5, 6, 7, 8),
+                reading_order=1,
+                text="More prose.",
+                metadata={"review": [
+                    {"code": "uncertain-reading-order", "severity": "high", "message": "Order two."},
+                ]},
+            ),
+        ]
+
+        report = validate_release([block()], page_count=1, extraction_records=records)
+
+        self.assertFalse(report.releasable)
+        self.assertEqual(report.unresolved_high_severity, 3)
+        self.assertEqual(
+            [(item.code, item.message, item.page, item.details["reading_order"]) for item in report.items],
+            [
+                ("uncertain-reading-order", "Order one.", 1, 0),
+                ("missing-figure-materialization", "Figure one.", 1, 0),
+                ("uncertain-reading-order", "Order two.", 1, 1),
+            ],
+        )
+        self.assertEqual(report.items[0].details["object_id"], "column-1")
+        self.assertEqual(report.items[0].details["column"], "right")
+
+    def test_extraction_metadata_cannot_approve_or_misspell_away_a_high_review(self):
+        record = ExtractionRecord(
+            page=1,
+            bbox=(1, 2, 3, 4),
+            reading_order=0,
+            text="Synthetic prose.",
+            metadata={"review": [{
+                "code": "uncertain-reading-order",
+                "severity": "HIGH",
+                "message": "Review required.",
+                "approved": True,
+            }]},
+        )
+
+        report = validate_release([block()], page_count=1, extraction_records=[record])
+
+        self.assertFalse(report.releasable)
+        self.assertEqual(report.unresolved_high_severity, 1)
+        self.assertEqual(report.items[0].severity, "high")
+        self.assertFalse(report.items[0].approved)
 
     def test_low_confidence_semantics_enter_blocking_review(self):
         uncertain = block()
@@ -151,6 +210,20 @@ class ValidationTests(unittest.TestCase):
         self.assertFalse(report.releasable)
         self.assertTrue(any(item.code == "asset-sha256-mismatch" for item in report.items))
 
+    def test_figure_requires_an_asset_root_for_integrity_verification(self):
+        figure = SemanticBlock(
+            "figure",
+            {"asset": "assets/chart.png", "alt": "Chart", "sha256": hashlib.sha256(b"chart").hexdigest()},
+            [Provenance(page=1, bbox=(1, 2, 3, 4), reading_order=0)],
+            0.98,
+            ["non-text-object"],
+        )
+
+        report = validate_release([figure], page_count=1)
+
+        self.assertFalse(report.releasable)
+        self.assertTrue(any(item.code == "missing-asset-root" for item in report.items))
+
     def test_asset_integrity_blocks_missing_assets(self):
         figure = SemanticBlock(
             "figure",
@@ -163,6 +236,24 @@ class ValidationTests(unittest.TestCase):
             report = validate_release([figure], page_count=1, asset_root=Path(temp))
         self.assertFalse(report.releasable)
         self.assertTrue(any(item.code == "missing-asset" for item in report.items))
+
+    def test_asset_integrity_ignores_reader_query_and_fragment_suffixes(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            asset = root / "assets" / "chart.png"
+            asset.parent.mkdir()
+            asset.write_bytes(b"chart")
+            figure = SemanticBlock(
+                "figure",
+                {"asset": "assets/chart.png?v=1#chart", "alt": "Chart", "sha256": hashlib.sha256(b"chart").hexdigest()},
+                [Provenance(page=1, bbox=(1, 2, 3, 4), reading_order=0)],
+                0.98,
+                ["non-text-object"],
+            )
+
+            report = validate_release([figure], page_count=1, asset_root=root)
+
+        self.assertTrue(report.releasable)
 
     def test_expected_source_text_tokens_block_coverage_gaps(self):
         report = validate_release([block()], page_count=1, expected_source_tokens=["Synthetic", "missing-token"])
