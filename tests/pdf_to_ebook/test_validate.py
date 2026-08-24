@@ -5,7 +5,7 @@ from pathlib import Path
 
 from tools.pdf_to_ebook.model import ExtractionRecord, Provenance, ReviewItem, SemanticBlock
 from tools.pdf_to_ebook.semantics import classify_records
-from tools.pdf_to_ebook.validate import validate_release
+from tools.pdf_to_ebook.validate import extraction_finding_id, validate_release
 
 
 def block(page=1):
@@ -19,6 +19,75 @@ def block(page=1):
 
 
 class ValidationTests(unittest.TestCase):
+    def test_extraction_finding_identity_distinguishes_object_and_field_scope(self):
+        object_finding = extraction_finding_id(
+            "ambiguous-label", 1, 2, (10, 20, 30, 40), object_id="shared-label"
+        )
+        field_finding = extraction_finding_id(
+            "ambiguous-label", 1, 2, (10, 20, 30, 40), field_name="shared-label"
+        )
+        delimiter_object_finding = extraction_finding_id(
+            "ambiguous-label", 1, 2, (10, 20, 30, 40), object_id="shared|field_name=tail"
+        )
+        delimiter_field_finding = extraction_finding_id(
+            "ambiguous-label",
+            1,
+            2,
+            (10, 20, 30, 40),
+            object_id="shared",
+            field_name="tail|field_name=",
+        )
+
+        self.assertNotEqual(object_finding, field_finding)
+        self.assertNotEqual(delimiter_object_finding, delimiter_field_finding)
+
+    def test_approval_with_extra_canonical_scope_cannot_cover_object_and_field_findings(self):
+        common_review = {
+            "code": "ambiguous-label",
+            "severity": "high",
+            "message": "Review required.",
+        }
+        records = [
+            ExtractionRecord(
+                page=1,
+                bbox=(10, 20, 30, 40),
+                reading_order=2,
+                text="Object finding.",
+                metadata={"review": [{**common_review, "object_id": "shared-label"}]},
+            ),
+            ExtractionRecord(
+                page=1,
+                bbox=(10, 20, 30, 40),
+                reading_order=2,
+                text="Field finding.",
+                metadata={"review": [{**common_review, "field_name": "shared-label"}]},
+            ),
+        ]
+        initial = validate_release([block()], page_count=1, extraction_records=records)
+        finding_id = initial.items[0].details["finding_id"]
+        approval = ReviewItem(
+            code="ambiguous-label",
+            severity="high",
+            page=1,
+            message="Reviewed.",
+            approved=True,
+            details={
+                "finding_id": finding_id,
+                "bbox": [10, 20, 30, 40],
+                "reading_order": 2,
+                "object_id": "shared-label",
+                "field_name": "shared-label",
+            },
+        )
+
+        report = validate_release([block()], page_count=1, extraction_records=records, review_items=[approval])
+        findings = [item for item in report.items if item.code == "ambiguous-label"]
+
+        self.assertFalse(report.releasable)
+        self.assertEqual(len(findings), 2)
+        self.assertTrue(all(not finding.approved for finding in findings))
+        self.assertTrue(any(item.code == "invalid-extraction-approval" for item in report.items))
+
     def test_missing_page_coverage_blocks_release(self):
         report = validate_release([block(page=1)], page_count=2)
         self.assertFalse(report.releasable)

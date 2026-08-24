@@ -16,6 +16,7 @@ from reportlab.pdfgen import canvas
 
 from tools.pdf_to_ebook.cli import _load_book_profile, convert
 from tools.pdf_to_ebook.model import ExtractionRecord, Provenance, SemanticBlock
+from tools.pdf_to_ebook.validate import extraction_finding_id
 
 
 def semantic_block(kind, data, page, order):
@@ -383,7 +384,9 @@ class ConvertPackageTests(unittest.TestCase):
                         _load_book_profile(path)
 
     def test_book_profile_requires_finding_approvals_to_include_matching_scope(self):
-        finding_id = hashlib.sha256(b"uncertain-reading-order|2|3|10,20,30,40|column-2").hexdigest()
+        finding_id = extraction_finding_id(
+            "uncertain-reading-order", 2, 3, [10, 20, 30, 40], object_id="column-2"
+        )
         base = {
             "code": "uncertain-reading-order",
             "severity": "high",

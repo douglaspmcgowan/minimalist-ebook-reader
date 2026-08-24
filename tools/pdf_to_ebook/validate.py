@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import math
 import re
 from collections import Counter
@@ -399,13 +400,18 @@ def extraction_finding_id(
     object_id: object = None,
     field_name: object = None,
 ) -> str:
-    identity = "|".join((
-        str(code),
-        str(page),
-        str(reading_order),
-        ",".join(str(value) for value in bbox),
-        str(object_id or field_name or ""),
-    ))
+    identity = json.dumps(
+        [
+            str(code),
+            str(page),
+            str(reading_order),
+            [str(value) for value in bbox],
+            None if object_id is None else str(object_id),
+            None if field_name is None else str(field_name),
+        ],
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
     return hashlib.sha256(identity.encode("utf-8")).hexdigest()
 
 
@@ -423,11 +429,12 @@ def _approval_matches_finding(approval: ReviewItem, finding: ReviewItem) -> bool
         or approval.details.get("bbox") != finding.details.get("bbox")
     ):
         return False
-    return all(
-        approval.details.get(key) == finding.details.get(key)
-        for key in ("object_id", "field_name")
-        if key in finding.details
-    )
+    for key in ("object_id", "field_name"):
+        if (key in approval.details) != (key in finding.details):
+            return False
+        if key in finding.details and approval.details[key] != finding.details[key]:
+            return False
+    return True
 
 
 def _extraction_review_severity(value: object) -> str:
