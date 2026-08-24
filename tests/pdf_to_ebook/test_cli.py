@@ -372,6 +372,7 @@ class ConvertPackageTests(unittest.TestCase):
             {"schema_version": 1, "record_overrides": [{"page": 1, "reading_order": 0, "set": {"metadata": {"review": []}}}]},
             {"schema_version": 1, "record_overrides": [{"page": 1, "reading_order": 0, "set": {"text": None}}]},
             {"schema_version": 1, "record_overrides": [{"page": 1, "reading_order": 0, "set": {"metadata": {"table_continuation": "yes"}}}]},
+            {"schema_version": 1, "record_overrides": [{"page": 1, "reading_order": 0, "set": {"metadata": {"semantic_exclusion": "yes"}}}]},
         ]
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp, "profile.json")
@@ -430,6 +431,31 @@ class ConvertPackageTests(unittest.TestCase):
             normalized = _load_book_profile(path)
 
         self.assertTrue(normalized["record_overrides"][0]["set"]["metadata"]["table_continuation"])
+
+    def test_book_profile_accepts_explicit_furniture_and_non_text_semantic_exclusions(self):
+        profile = {
+            "schema_version": 1,
+            "record_overrides": [
+                {
+                    "page": 1,
+                    "reading_order": 0,
+                    "set": {"role_hint": "furniture"},
+                },
+                {
+                    "page": 2,
+                    "reading_order": 0,
+                    "set": {"role_hint": "non_text_object", "metadata": {"semantic_exclusion": True}},
+                },
+            ],
+        }
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp, "profile.json")
+            path.write_text(json.dumps(profile), encoding="utf-8")
+
+            normalized = _load_book_profile(path)
+
+        self.assertEqual(normalized["record_overrides"][0]["set"]["role_hint"], "furniture")
+        self.assertTrue(normalized["record_overrides"][1]["set"]["metadata"]["semantic_exclusion"])
 
     def test_two_processes_cannot_publish_a_package_with_another_conversions_assets(self):
         worker_source = r'''

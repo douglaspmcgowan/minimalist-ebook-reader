@@ -220,6 +220,97 @@ class SemanticClassificationTests(unittest.TestCase):
         self.assertEqual(blocks[0].data["text"], "A paragraph carries over to the next page without a break.")
         self.assertEqual([source.page for source in blocks[0].provenance], [1, 2])
 
+    def test_excluded_page_furniture_is_invisible_to_cross_page_structure_adjacency(self):
+        furniture = ExtractionRecord(
+            page=2,
+            bbox=(240, 20, 372, 40),
+            reading_order=0,
+            text="Monthly Community Bulletin",
+            role_hint="furniture",
+        )
+        cases = {
+            "paragraph": (
+                ExtractionRecord(page=1, bbox=(72, 700, 540, 720), reading_order=4, text="A paragraph carries over"),
+                ExtractionRecord(page=2, bbox=(72, 72, 540, 92), reading_order=1, text="to the next page."),
+                "paragraph",
+            ),
+            "heading": (
+                ExtractionRecord(page=1, bbox=(72, 700, 540, 720), reading_order=4, text="A Guide", bold=True, font_size=18),
+                ExtractionRecord(page=2, bbox=(72, 72, 540, 92), reading_order=1, text="to Saving", bold=True, font_size=18),
+                "heading",
+            ),
+            "quotation": (
+                ExtractionRecord(page=1, bbox=(72, 700, 540, 720), reading_order=4, text="A quotation carries", role_hint="quotation"),
+                ExtractionRecord(page=2, bbox=(72, 72, 540, 92), reading_order=1, text="across the page", role_hint="quotation"),
+                "quotation",
+            ),
+            "list": (
+                ExtractionRecord(page=1, bbox=(72, 700, 540, 720), reading_order=4, text="1. First item"),
+                ExtractionRecord(page=2, bbox=(72, 72, 540, 92), reading_order=1, text="2. Second item"),
+                "list",
+            ),
+            "table": (
+                ExtractionRecord(
+                    page=1,
+                    bbox=(72, 620, 540, 720),
+                    reading_order=4,
+                    role_hint="table",
+                    table={"caption": "Totals", "headers": ["Quarter", "Amount"], "rows": [["Q1", "$10"]]},
+                ),
+                ExtractionRecord(
+                    page=2,
+                    bbox=(72, 72, 540, 160),
+                    reading_order=1,
+                    role_hint="table",
+                    table={"caption": None, "headers": ["Quarter", "Amount"], "rows": [["Q2", "$12"]]},
+                ),
+                "table",
+            ),
+        }
+
+        for label, (first, second, expected_kind) in cases.items():
+            with self.subTest(label=label):
+                blocks = classify_records([first, furniture, second])
+                self.assertEqual([block.kind for block in blocks], [expected_kind])
+                self.assertEqual([source.page for source in blocks[0].provenance], [1, 2])
+
+    def test_reviewed_non_text_exclusion_is_invisible_to_semantic_adjacency(self):
+        records = [
+            ExtractionRecord(page=1, bbox=(72, 700, 540, 720), reading_order=4, text="A paragraph carries over"),
+            ExtractionRecord(
+                page=2,
+                bbox=(240, 20, 372, 40),
+                reading_order=0,
+                text="",
+                role_hint="non_text_object",
+                metadata={"object_id": "vector-1", "semantic_exclusion": True},
+            ),
+            ExtractionRecord(page=2, bbox=(72, 72, 540, 92), reading_order=1, text="to the next page."),
+        ]
+
+        blocks = classify_records(records)
+
+        self.assertEqual([block.data["text"] for block in blocks], ["A paragraph carries over to the next page."])
+        self.assertEqual([source.page for source in blocks[0].provenance], [1, 2])
+
+    def test_unreviewed_non_text_object_remains_a_semantic_adjacency_barrier(self):
+        records = [
+            ExtractionRecord(page=1, bbox=(72, 700, 540, 720), reading_order=4, text="A paragraph carries over"),
+            ExtractionRecord(
+                page=2,
+                bbox=(240, 20, 372, 40),
+                reading_order=0,
+                text="",
+                role_hint="non_text_object",
+                metadata={"object_id": "vector-1"},
+            ),
+            ExtractionRecord(page=2, bbox=(72, 72, 540, 92), reading_order=1, text="to the next page."),
+        ]
+
+        blocks = classify_records(records)
+
+        self.assertEqual([block.data["text"] for block in blocks], ["A paragraph carries over", "to the next page."])
+
     def test_continues_lists_and_wrapped_items_across_pages(self):
         records = [
             ExtractionRecord(page=1, bbox=(72, 680, 540, 700), reading_order=3, text="1. First item wraps"),
