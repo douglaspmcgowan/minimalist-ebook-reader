@@ -245,9 +245,70 @@ class ExtractionTests(unittest.TestCase):
             self.assertEqual(len(forms), 1)
             self.assertEqual(forms[0].form["title"], "Billing plan")
             self.assertEqual(forms[0].form["fields"][0]["label"], "Billing plan")
+            self.assertEqual(forms[0].form["fields"][0]["options"], ["annual", "monthly"])
             self.assertEqual(forms[0].metadata["widget_count"], 2)
             report = validate_release(classify_records(records), page_count=1, extraction_records=records)
             self.assertTrue(report.releasable, [item.to_dict() for item in report.items])
+
+    def test_widget_name_fallback_can_be_approved_by_stable_finding_id(self):
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            source, pdf = self._canvas(directory, "fallback-widget.pdf")
+            pdf.drawString(72, 700, "Email")
+            pdf.acroForm.textfield(name="email", x=72, y=640, width=180, height=24, borderWidth=1)
+            pdf.save()
+
+            _, records = extract_pdf(source)
+            blocks = classify_records(records)
+            first = validate_release(blocks, page_count=1, extraction_records=records)
+            finding = next(item for item in first.items if item.code == "widget-label-name-fallback")
+            approval = type(finding)(
+                finding.code,
+                finding.severity,
+                finding.page,
+                "Reviewed field-name fallback.",
+                approved=True,
+                details={"finding_id": finding.details["finding_id"]},
+            )
+
+            approved = validate_release(blocks, page_count=1, extraction_records=records, review_items=[approval])
+
+            self.assertTrue(approved.releasable, [item.to_dict() for item in approved.items])
+
+    def test_rotated_multiline_text_and_positioned_words_form_logical_lines(self):
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            raw, pdf = self._canvas(directory, "raw-multiline.pdf")
+            pdf.drawString(72, 700, "Alpha")
+            pdf.drawString(150, 700, "Beta")
+            pdf.drawString(72, 675, "Gamma")
+            pdf.drawString(150, 675, "Delta")
+            pdf.save()
+            for rotation in (90, 270):
+                reader = PdfReader(raw)
+                writer = PdfWriter()
+                writer.add_page(reader.pages[0])
+                writer.pages[0].rotate(rotation)
+                source = directory / f"multiline-{rotation}.pdf"
+                with source.open("wb") as handle:
+                    writer.write(handle)
+
+                _, records = extract_pdf(source)
+
+                self.assertEqual([record.text for record in records], ["Alpha Beta", "Gamma Delta"], f"rotation {rotation}")
+
+    def test_vector_inventory_does_not_make_enclosed_text_order_ambiguous(self):
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            source, pdf = self._canvas(directory, "labelled-vector.pdf")
+            pdf.rect(60, 670, 160, 50, stroke=1, fill=0)
+            pdf.drawString(72, 700, "Labelled box")
+            pdf.save()
+
+            _, records = extract_pdf(source)
+
+            text = next(record for record in records if record.text == "Labelled box")
+            self.assertFalse(text.metadata.get("reading_order_ambiguous"))
 
     def test_enumerates_real_pdf_vector_region_for_mandatory_disposition(self):
         with tempfile.TemporaryDirectory() as temp:
