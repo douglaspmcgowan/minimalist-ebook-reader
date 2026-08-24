@@ -1,0 +1,18 @@
+{
+    "schemaVersion":  1,
+    "project":  "boundaries-reader",
+    "selectionPolicy":  [
+                            "recurring-workflow",
+                            "fragile-verification",
+                            "project-owned-resources",
+                            "cloud-required"
+                        ],
+    "bindings":  [
+                     {
+                         "name":  "feedback",
+                         "reason":  "Durable correction routing is required across local and cloud agents.",
+                         "cloudRequired":  true,
+                         "delivery":  "vendored"
+                     }
+                 ]
+}

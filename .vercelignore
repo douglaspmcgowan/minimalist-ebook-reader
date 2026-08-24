@@ -3,4 +3,6 @@ content-private/
 book.json
 _book.json.local
 *.pdf
+.local/
 .claude/
+.superpowers/

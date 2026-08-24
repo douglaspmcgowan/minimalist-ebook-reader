@@ -1,0 +1,8 @@
+---
+description: Load the repository project contract and task-state map
+alwaysApply: true
+---
+
+Read and follow repository-root `AGENTS.md`.
+
+Before editing, read `CURRENT-TASK.md`, `STATUS.md`, and recent `LOG.md`. Read `WORK_QUEUE.md` for multi-step work and `VERIFY.md` before a completion claim.

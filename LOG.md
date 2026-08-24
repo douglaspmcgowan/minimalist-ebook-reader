@@ -1,0 +1,12 @@
+# Work log
+
+- 2026-08-22 — Converted Douglas's downloaded *The Total Money Makeover* PDF into the ignored private reader format, preserved the previous private book, and verified the full local reading path at desktop and mobile widths.
+- 2026-08-22 — Repaired extracted drop-cap and sentence boundaries, added edition-aware progress with a regression test and cache-busted delivery, and closed independent review with no findings.
+- 2026-08-22 — Closed full-fidelity parity for the 229-page private edition with 21 sections, 229 exact facsimiles, accessible responsive text, passing package/renderer audits, and desktop/390px browser evidence; recorded the unrelated portable-baseline verifier failure separately.
+- 2026-08-22 — Completed Task 4 Fix Round 1: quantified pypdf coverage and residuals without prose, proved all 45 content image-bearing pages have facsimiles, narrowed semantic claims, and added 390px table/worksheet plus 21-section keyboard evidence.
+- 2026-08-23 — Closed the Final Fix Wave and whole-change re-review: 229 intrinsic page geometries, serialized imports, all-page Poppler pixel mapping, and local-evidence deployment exclusion passed; readiness is READY.
+- 2026-08-23 — Deployed the verified 229-page edition as Vercel preview `dpl_3QhGzvFgS4ZBg4G5RbWxfnAed32X` behind Vercel Authentication; remote manifest/page hashes and live browser smoke passed while repository upload guards remained unchanged.
+- 2026-08-23 — Revoked the temporary Vercel automation-bypass credential created by remote verification, confirmed zero bypass entries remain, and updated `VERIFY.md` to prohibit raw protection JSON output.
+- 2026-08-23 — Replaced the facsimile-led contract with semantic PDF-to-ebook intent, specification, design, reusable conversion code, reader-native renderers, and a real page-8 regression.
+- 2026-08-23 — Regenerated the private edition with 1,283 provenance-bearing blocks, 52 cropped figures, 3 tables, 15 forms, 12 index blocks, 20 linked contents entries, and zero full-page facsimiles; all package gates passed.
+- 2026-08-23 — Completed the semantic repair and release: 945 reader-native blocks, all 229 pages independently approved with zero findings, 147 automated checks passing, desktop/390px verification clean, and clean allowlisted protected preview `dpl_7hxD6eo4u971Ko7CpCs3eojXHy7a` deployed with hash parity and zero remaining bypass entries.

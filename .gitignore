@@ -9,8 +9,9 @@ Thumbs.db
 desktop.ini
 node_modules/
 .vercel
+.local/
+__pycache__/
+*.pyc
+.superpowers/sdd/2026-08-22-total-money-makeover-full-fidelity/task-4-independent-pdf-audit.json
 
-.vercel
-
-# local task state
-CURRENT-TASK.md
+# Project task state is tracked for cross-agent handoffs.
