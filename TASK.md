@@ -6,13 +6,11 @@ Close the generic PDF-to-ebook release gaps found by the 2026-08-24 independent 
 
 ## Active
 
-- [~] T1 — Join hard-wrapped paragraphs and lists across page boundaries with failing-first regressions | owner: `codex/flow-continuation` | worktree: `.worktrees/flow-continuation` | verifier: public converter suite and diff hygiene.
-- [~] T2 — Extract geometrically ordered text, tables, links, widgets, and materialized figures with failing-first regressions | owner: `codex/extraction-fidelity` | worktree: `.worktrees/extraction-fidelity` | verifier: public converter suite and diff hygiene.
-- [~] T3 — Emit a reader-loadable package and block structurally incomplete releases with failing-first regressions | owner: `codex/package-validation` | worktree: `.worktrees/package-validation` | verifier: public converter and reader suites plus diff hygiene.
+<!-- No active work. -->
 
 ## Queue
 
-- [ ] T4 — Integrate and independently review T1–T3; run the full public, private, browser, security, and repository verification chain.
+<!-- No queued work. -->
 
 ## Blocked
 
@@ -26,14 +24,18 @@ Close the generic PDF-to-ebook release gaps found by the 2026-08-24 independent 
 
 - [x] Replaced the facsimile-led PDF import with the semantic reader, regenerated the 229-page private edition, completed three disjoint page reviews, and deployed the corrected protected preview.
 - [x] T5 — Reconciled the current shared-harness projection, archived the legacy task/status files under ignored local backups, upgraded the data manifest to schema v2, and passed `VerifyProject`.
+- [x] T1 — Joined hard-wrapped paragraphs and lists across page boundaries while preserving paragraph, hyphen, furniture, and list-restart boundaries.
+- [x] T2 — Extracted geometrically ordered text, tables, rotated/cropped links, inherited widgets, and hash-bound cropped figures with blocking ambiguity evidence.
+- [x] T3 — Emitted deterministic reader-loadable chapters and added blocking gates for targets, forms, non-text objects, review metadata, token coverage, and asset integrity.
+- [x] T4 — Integrated and independently rereviewed every fix; the final cross-lane review reported no Critical, Important, or Minor findings.
 
 ## Verification
 
-- Public: Python converter tests, Node reader tests, `node --check app.js`, and `git diff --check`.
-- Private: `content-private/total-money-makeover/test-import-book.py` and `import-book.py --verify-only`.
-- Security: staged Gitleaks scan plus Git and Vercel ignore checks for private/local assets.
-- Interface: repository detector plus desktop and 390px browser exercise when reader-visible files change.
-- Project: `C:\Users\dougl\.agents\tools\Test-AgentProjectState.cmd C:\Users\dougl\projects\boundaries-reader`.
+- Public: 62 Python converter tests and 22 Node reader tests pass; `node --check app.js` and `git diff --check` pass.
+- Private: 35 package tests and `import-book.py --verify-only` pass with 229 assets, 21 sections, 945 blocks, zero facsimiles, and unchanged SHA-256 `1F785731FF2F840A404573DEDA9E94CA9943DEEBD4ECD19204CF638271EC315D`.
+- Security: staged Gitleaks and the Git/Vercel private-local ignore checks pass.
+- Interface: desktop and 390px reading, contents navigation, resume, settings, pager, containment, and current-origin console checks pass. The detector reports only the two incumbent warnings recorded by the design contract.
+- Project: both `VerifyProject` and `Test-AgentProjectState.cmd` pass.
 
 <!--
 Markers use a space for queued work, a tilde for active work, x for complete,

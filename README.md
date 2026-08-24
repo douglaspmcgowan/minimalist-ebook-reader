@@ -41,14 +41,22 @@ public-domain `book.sample.json`.
 The private edition is supplied through ignored root `book.json`. The semantic
 PDF-to-ebook pipeline converts source structure into responsive headings,
 paragraphs, contents, lists, quotations, tables, forms, figures, captions, and
-index entries with source provenance. Full-page source renders remain private
+index entries with source provenance. The generic CLI emits the reader's
+loadable chapter schema, stages cropped figures under an explicit asset root,
+and refuses publication while reading order, coverage, links, forms, figures,
+or hashes remain unresolved. Full-page source renders remain private
 verification assets outside the reading flow. `INTENT.md` and `SPEC.md` own the
-product contract.
+product contract; `MAP.md` routes the implementation and `TASK.md` owns current
+verification.
+
+```powershell
+python -m tools.pdf_to_ebook.cli input.pdf book.json --asset-root . --report conversion-report.json
+```
 
 Git and repository-root Vercel exclusions keep the private package and root
 book outside public releases. An explicitly authorized private preview uses an
-allowlisted staging package and Vercel Authentication. See `STATUS.md` for the
-current protected route and `VERIFY.md` for release gates.
+allowlisted staging package and Vercel Authentication. See `MAP.md` for the
+current protected route and `TASK.md` for release gates.
 
 ## ©️ Copyright
 
@@ -67,5 +75,5 @@ python -m http.server 5179      # then open http://localhost:5179
 ## 🛠 Deploy
 
 Static site — deploys to Vercel (or any static host) with zero configuration.
-The default deployment contains the public sample. Private previews follow the
-protected staging procedure in `VERIFY.md`.
+The default deployment contains the public sample. `TASK.md` records the
+protected private-preview gate.

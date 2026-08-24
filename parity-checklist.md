@@ -33,8 +33,8 @@ Release rule: every source page has semantic coverage or an approved disposition
 
 ## Current evidence
 
-- Generic converter suite: 13 tests passing.
-- Private semantic/package suites: 113 tests passing.
-- Reader suite: 21 tests passing.
+- Generic converter suite: 62 tests passing.
+- Private package suite: 35 tests passing plus verification-only integrity.
+- Reader suite: 22 tests passing.
 - Private verification report: all gates passing.
 - Independent page reviews: 229/229 pages approved with zero findings.

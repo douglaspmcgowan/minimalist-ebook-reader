@@ -28,6 +28,7 @@
 | Public sample | Supply the deployable public-domain fallback book | `book.sample.json` | `book.sample.json` |
 | Private local book | Supply Douglas's current personal-use book outside Git and public deploys | `book.json` | local user data |
 | PDF-to-ebook converter | Recover semantic book structure with provenance, review, and validation | `tools/pdf_to_ebook/` | converter modules and tests |
+| Reader package builder | Convert semantic blocks into deterministic, directly loadable chapters and stable internal targets | `tools/pdf_to_ebook/package.py` | package builder and CLI tests |
 | Private book profile | Apply narrow source-specific decisions and generate the current edition | `content-private/total-money-makeover/import-book.py` | ignored local package |
 | Private package manifest | Bind source identity, section coverage, validation digests, and each facsimile hash/dimension | `content-private/total-money-makeover/source-manifest.json` | ignored local package |
 
@@ -43,7 +44,7 @@
 
 ## Data flow
 
-The ignored source PDF enters the semantic converter. Layout extraction creates provenance-bearing candidates; structural classification produces reader-native blocks; review and validation block uncertain releases; the private profile supplies narrow approved decisions. The browser renders semantic book content only. Private source renders support verification and inspection outside the reading flow. `.gitignore` and `.vercelignore` contain the repository trust boundary. An explicitly authorized allowlisted package can route the private runtime edition to an account-protected Vercel generated URL without changing those guards.
+The ignored source PDF enters the semantic converter. Layout extraction creates geometrically ordered provenance-bearing candidates, link/widget records, and staged cropped figures. Structural classification joins reader flow conservatively and preserves ordinary internal links. Package construction emits directly loadable chapters; review, coverage, asset-integrity, and target validation promote the package and figures together only after all release gates pass. The private profile supplies narrow approved decisions. The browser renders semantic book content only. Private source renders support verification and inspection outside the reading flow. `.gitignore` and `.vercelignore` contain the repository trust boundary. An explicitly authorized allowlisted package can route the private runtime edition to an account-protected Vercel generated URL without changing those guards.
 
 ## Integrations
 
@@ -55,7 +56,7 @@ The ignored source PDF enters the semantic converter. Layout extraction creates 
 
 - The ignored private edition contains 21 sections, 229 page-coverage records, 945 semantic blocks, 33 cropped figures, 9 tables, 28 forms, 11 index blocks, and zero default-flow facsimiles.
 - The latest verified account-protected preview is `https://boundaries-reader-mgdlai4nb-douglas-mcgowans-projects.vercel.app`.
-- Public converter/reader tests, private semantic/package tests, three disjoint page reviews, and desktop/390px checks are the release evidence; `TASK.md` owns the current verification commands and remaining completion work.
+- Sixty-two public converter tests, 22 reader tests, 35 private package tests, verification-only integrity, three disjoint page reviews, and desktop/390px checks are the current release evidence; `TASK.md` owns the commands.
 
 ## Ownership and concurrency
 
