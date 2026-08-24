@@ -207,7 +207,13 @@ def _validate_non_text_objects(items: list[ReviewItem], blocks: list[SemanticBlo
             block.kind in {"divider", "figure"}
             and (page is None or any(source.page == page for source in block.provenance))
             and (
-                (bool(object_id) and object_id in (block.data.get("id"), block.data.get("object_id"), block.data.get("object_name")))
+                (
+                    bool(object_id)
+                    and object_id in tuple(
+                        _normalize_non_text_object_id(block.data.get(key))
+                        for key in ("id", "object_id", "object_name")
+                    )
+                )
                 or (
                     normalized_bbox is not None
                     and any(source.page == page and tuple(source.bbox) == normalized_bbox for source in block.provenance)
@@ -219,7 +225,7 @@ def _validate_non_text_objects(items: list[ReviewItem], blocks: list[SemanticBlo
             item.approved
             and item.code == "non-text-object-disposition"
             and (
-                item.details.get("object_id") == object_id and (item.page is None or item.page == page)
+                _normalize_non_text_object_id(item.details.get("object_id")) == object_id and (item.page is None or item.page == page)
                 if object_id
                 else item.page == page and _normalized_bbox(item.details.get("bbox")) == normalized_bbox
             )
@@ -230,8 +236,19 @@ def _validate_non_text_objects(items: list[ReviewItem], blocks: list[SemanticBlo
 
 
 def _non_text_object_id(obj: dict) -> str | None:
-    raw = obj.get("id") or obj.get("object_id") or obj.get("object_name")
-    return str(raw).strip() if isinstance(raw, (str, int)) and not isinstance(raw, bool) and str(raw).strip() else None
+    for key in ("id", "object_id", "object_name"):
+        if key in obj:
+            identifier = _normalize_non_text_object_id(obj.get(key))
+            if identifier is not None:
+                return identifier
+    return None
+
+
+def _normalize_non_text_object_id(value: object) -> str | None:
+    if not isinstance(value, (str, int)) or isinstance(value, bool):
+        return None
+    identifier = str(value).strip()
+    return identifier if identifier else None
 
 
 def _validate_block_links(

@@ -10,7 +10,7 @@ from reportlab.lib import colors
 from reportlab.pdfgen import canvas
 from reportlab.platypus import Table, TableStyle
 
-from tools.pdf_to_ebook.extract import _widget_options, extract_pdf
+from tools.pdf_to_ebook.extract import _widget_options, _widget_value, extract_pdf
 from tools.pdf_to_ebook.semantics import classify_records
 from tools.pdf_to_ebook.validate import validate_release
 
@@ -246,6 +246,7 @@ class ExtractionTests(unittest.TestCase):
             self.assertEqual(forms[0].form["title"], "Billing plan")
             self.assertEqual(forms[0].form["fields"][0]["label"], "Billing plan")
             self.assertEqual(forms[0].form["fields"][0]["options"], ["monthly", "annual"])
+            self.assertEqual(forms[0].form["fields"][0]["value"], "monthly")
             self.assertEqual(forms[0].metadata["widget_count"], 2)
             report = validate_release(classify_records(records), page_count=1, extraction_records=records)
             self.assertTrue(report.releasable, [item.to_dict() for item in report.items])
@@ -319,12 +320,53 @@ class ExtractionTests(unittest.TestCase):
                 self.assertEqual({record.text for record in records}, {"Left one", "Left two", "Right one", "Right two"})
                 self.assertTrue(all(record.metadata.get("reading_order_ambiguous") for record in records))
 
+    def test_rotated_columns_are_geometric_when_content_stream_paints_right_first(self):
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            raw, pdf = self._canvas(directory, "raw-reversed-columns.pdf")
+            for y, suffix in ((700, "one"), (675, "two")):
+                pdf.drawString(330, y, f"Right {suffix}")
+                pdf.drawString(72, y, f"Left {suffix}")
+            pdf.save()
+            reader = PdfReader(raw)
+            writer = PdfWriter()
+            writer.add_page(reader.pages[0])
+            writer.pages[0].rotate(90)
+            source = directory / "reversed-columns.pdf"
+            with source.open("wb") as handle:
+                writer.write(handle)
+
+            _, records = extract_pdf(source)
+
+            self.assertEqual({record.text for record in records}, {"Left one", "Left two", "Right one", "Right two"})
+            self.assertTrue(all(record.metadata.get("reading_order_ambiguous") for record in records))
+
+    def test_rotated_moderate_column_gap_uses_the_column_axis_extent(self):
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            raw, pdf = self._canvas(directory, "raw-moderate-columns.pdf")
+            for y, suffix in ((700, "1"), (675, "2")):
+                pdf.drawString(72, y, f"L{suffix}")
+                pdf.drawString(185, y, f"R{suffix}")
+            pdf.save()
+            reader = PdfReader(raw)
+            writer = PdfWriter()
+            writer.add_page(reader.pages[0])
+            writer.pages[0].rotate(90)
+            source = directory / "moderate-columns.pdf"
+            with source.open("wb") as handle:
+                writer.write(handle)
+
+            _, records = extract_pdf(source)
+
+            self.assertTrue(all(record.metadata.get("reading_order_ambiguous") for record in records))
+
     def test_rotated_anchor_text_inserts_space_between_positioned_runs(self):
         with tempfile.TemporaryDirectory() as temp:
             directory = Path(temp)
             raw, pdf = self._canvas(directory, "raw-anchor-words.pdf")
-            pdf.drawString(72, 700, "Alpha")
             pdf.drawString(150, 700, "Beta")
+            pdf.drawString(72, 700, "Alpha")
             pdf.linkAbsolute("words", "target", Rect=(70, 696, 190, 712), thickness=0)
             pdf.showPage()
             pdf.bookmarkPage("target")
@@ -352,6 +394,22 @@ class ExtractionTests(unittest.TestCase):
         })
 
         self.assertEqual(_widget_options(annotation, "choice", 0), ["Beta", "Alpha"])
+
+    def test_widget_values_match_display_options_and_preserve_multiselect(self):
+        single = DictionaryObject({
+            NameObject("/Opt"): ArrayObject([ArrayObject([TextStringObject("b"), TextStringObject("Beta")])]),
+            NameObject("/V"): TextStringObject("b"),
+        })
+        multiple = DictionaryObject({
+            NameObject("/Opt"): ArrayObject([
+                ArrayObject([TextStringObject("b"), TextStringObject("Beta")]),
+                ArrayObject([TextStringObject("a"), TextStringObject("Alpha")]),
+            ]),
+            NameObject("/V"): ArrayObject([TextStringObject("b"), TextStringObject("a")]),
+        })
+
+        self.assertEqual(_widget_value(single), "Beta")
+        self.assertEqual(_widget_value(multiple), ["Beta", "Alpha"])
 
     def test_pushbutton_appearance_stream_is_not_treated_as_options(self):
         normal = StreamObject()

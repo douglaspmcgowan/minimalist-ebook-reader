@@ -272,6 +272,18 @@ class ValidationTests(unittest.TestCase):
 
         self.assertTrue(any(item.code == "duplicate-non-text-object-id" for item in report.items))
 
+    def test_numeric_zero_non_text_id_matches_semantic_coverage(self):
+        source = Provenance(page=1, bbox=(20, 100, 30, 110), reading_order=0)
+        divider = SemanticBlock("divider", {"object_id": 0}, [source], 0.98, ["vector-geometry"])
+
+        report = validate_release(
+            [divider],
+            page_count=1,
+            non_text_objects=[{"id": 0, "page": 1, "bbox": [200, 300, 220, 320]}],
+        )
+
+        self.assertTrue(report.releasable, [item.to_dict() for item in report.items])
+
     def test_non_text_semantic_coverage_must_be_on_the_inventory_page(self):
         figure = SemanticBlock(
             "figure",

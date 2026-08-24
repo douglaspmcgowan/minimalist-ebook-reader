@@ -151,6 +151,22 @@ def _character_lines(characters: list[dict[str, Any]], rotation: int) -> list[li
             groups.append([])
             match = len(groups) - 1
         groups[match].append(character)
+    if rotation == 90:
+        for group in groups:
+            group.sort(key=lambda item: float(item["top"]))
+        groups.sort(key=lambda group: -float(group[0]["x0"]))
+    elif rotation == 270:
+        for group in groups:
+            group.sort(key=lambda item: -float(item["top"]))
+        groups.sort(key=lambda group: float(group[0]["x0"]))
+    elif rotation == 180:
+        for group in groups:
+            group.sort(key=lambda item: -float(item["x0"]))
+        groups.sort(key=lambda group: -float(group[0]["top"]))
+    else:
+        for group in groups:
+            group.sort(key=lambda item: float(item["x0"]))
+        groups.sort(key=lambda group: float(group[0]["top"]))
     return groups
 
 
@@ -295,6 +311,24 @@ def _widget_options(annotation: Any, field_type: str, field_flags: int) -> list[
     return options
 
 
+def _widget_value(annotation: Any) -> str | list[str]:
+    raw = _inherited_annotation_value(annotation, "/V")
+    mapping: dict[str, str] = {}
+    inherited = _inherited_annotation_value(annotation, "/Opt")
+    if isinstance(inherited, (list, tuple)):
+        for option in inherited:
+            if isinstance(option, (list, tuple)) and len(option) >= 2:
+                mapping[str(option[0]).lstrip("/")] = str(option[1])
+
+    def normalize(value: Any) -> str:
+        text = str(value or "").lstrip("/")
+        return mapping.get(text, text)
+
+    if isinstance(raw, (list, tuple)):
+        return [normalize(value) for value in raw]
+    return normalize(raw)
+
+
 def _destination_page(reader: PdfReader, destination: Any) -> int | None:
     if destination is None:
         return None
@@ -346,7 +380,7 @@ def _page_annotations(reader: PdfReader, page_number: int) -> tuple[list[dict[st
                     "name": name,
                     "label": label,
                     "type": field_type,
-                    "value": str(_inherited_annotation_value(annotation, "/V") or ""),
+                    "value": _widget_value(annotation),
                     "required": bool(field_flags & 2),
                 },
                 "options": _widget_options(annotation, field_type, field_flags),
@@ -548,7 +582,8 @@ def extract_pdf(
 
             reading_order_candidates = [candidate for candidate in candidates if candidate.get("role_hint") != "non_text_object"]
             rotation = int(getattr(page, "rotation", 0) or 0) % 360
-            ambiguous = _ambiguous_reading_order(reading_order_candidates, float(page.width), rotation)
+            column_axis_extent = float(page.height if rotation in {90, 270} else page.width)
+            ambiguous = _ambiguous_reading_order(reading_order_candidates, column_axis_extent, rotation)
             for order, candidate in enumerate(sorted(candidates, key=lambda item: _reading_order_key(item, rotation))):
                 metadata = dict(candidate.get("metadata") or {})
                 if ambiguous:
