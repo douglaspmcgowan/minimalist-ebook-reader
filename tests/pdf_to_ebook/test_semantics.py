@@ -129,6 +129,39 @@ class SemanticClassificationTests(unittest.TestCase):
 
         self.assertEqual([block.data["text"] for block in blocks], ["Monthly Community Bulletin", "Monthly Community Bulletin"])
 
+    def test_preserves_complete_adjacent_paragraphs_with_initial_capitals(self):
+        records = [
+            ExtractionRecord(page=1, bbox=(72, 100, 540, 120), reading_order=0, text="Complete sentence."),
+            ExtractionRecord(page=1, bbox=(72, 124, 540, 144), reading_order=1, text="New paragraph."),
+        ]
+
+        blocks = classify_records(records)
+
+        self.assertEqual([block.data["text"] for block in blocks], ["Complete sentence.", "New paragraph."])
+
+    def test_preserves_compound_hyphens_and_joins_marked_discretionary_hyphens(self):
+        compound = classify_records([
+            ExtractionRecord(page=1, bbox=(72, 100, 540, 120), reading_order=0, text="A long-"),
+            ExtractionRecord(page=1, bbox=(72, 124, 540, 144), reading_order=1, text="term plan."),
+        ])
+        discretionary = classify_records([
+            ExtractionRecord(page=1, bbox=(72, 100, 540, 120), reading_order=0, text="An inter-", metadata={"discretionary_hyphen": True}),
+            ExtractionRecord(page=1, bbox=(72, 124, 540, 144), reading_order=1, text="national agreement."),
+        ])
+
+        self.assertEqual(compound[0].data["text"], "A long-term plan.")
+        self.assertEqual(discretionary[0].data["text"], "An international agreement.")
+
+    def test_does_not_continue_ordered_list_when_numbering_restarts_on_next_page(self):
+        records = [
+            ExtractionRecord(page=1, bbox=(72, 700, 540, 720), reading_order=4, text="1. First list item"),
+            ExtractionRecord(page=2, bbox=(72, 72, 540, 92), reading_order=0, text="1. Restarted list item"),
+        ]
+
+        blocks = classify_records(records)
+
+        self.assertEqual([block.data["items"] for block in blocks], [["First list item"], ["Restarted list item"]])
+
 
 if __name__ == "__main__":
     unittest.main()

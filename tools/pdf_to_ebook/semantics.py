@@ -33,11 +33,13 @@ def _list_data(records: list[ExtractionRecord]) -> dict:
     markers = [match for match in parsed if match]
     ordered = bool(markers and all(match.group("marker")[0].isdigit() for match in markers))
     items: list[str] = []
+    previous = None
     for record, match in zip(records, parsed):
         if match or record.role_hint == "list_item":
             items.append(match.group("text").strip() if match else record.text.strip())
         elif items:
-            items[-1] = _join_text(items[-1], record.text)
+            items[-1] = _join_text(items[-1], record.text, bool(previous and previous.metadata.get("discretionary_hyphen")))
+        previous = record
     return {"ordered": ordered, "items": items}
 
 
@@ -48,18 +50,20 @@ def _index_entry(record: ExtractionRecord) -> dict:
     return {"term": record.text.strip(), "locators": []}
 
 
-def _join_text(first: str, second: str) -> str:
+def _join_text(first: str, second: str, discretionary_hyphen: bool = False) -> str:
     first = first.strip()
     second = second.strip()
     if first.endswith("-") and second:
-        return first[:-1] + second
+        return (first[:-1] if discretionary_hyphen else first) + second
     return f"{first} {second}".strip()
 
 
 def _join_records(records: list[ExtractionRecord]) -> str:
     text = ""
+    previous = None
     for record in records:
-        text = record.text.strip() if not text else _join_text(text, record.text)
+        text = record.text.strip() if not text else _join_text(text, record.text, bool(previous and previous.metadata.get("discretionary_hyphen")))
+        previous = record
     return text
 
 
@@ -94,7 +98,10 @@ def _can_join_paragraph_line(first: ExtractionRecord, second: ExtractionRecord) 
     if not _is_plain_text(second):
         return False
     if second.page == first.page:
-        return _same_page_flow(first, second)
+        return _same_page_flow(first, second) and not (
+            re.search(r"[.!?…:;][\"')\]]*$", first.text.strip())
+            and second.text.lstrip()[:1].isupper()
+        )
     return (
         _same_column(first, second)
         and _cross_page_flow(first, second)
@@ -110,6 +117,25 @@ def _list_marker_family(record: ExtractionRecord) -> str | None:
     return "ordered" if match.group("marker")[0].isdigit() else "unordered"
 
 
+def _ordered_marker_value(record: ExtractionRecord) -> int | None:
+    match = _LIST.match(record.text)
+    if not match or not match.group("marker")[0].isdigit():
+        return None
+    return int(match.group("marker").rstrip(".)"))
+
+
+def _explicit_list_continuation(first: ExtractionRecord, second: ExtractionRecord) -> bool:
+    return bool(first.metadata.get("list_continuation") or second.metadata.get("list_continuation"))
+
+
+def _continues_list_across_page(last_marker: ExtractionRecord, candidate: ExtractionRecord) -> bool:
+    if _explicit_list_continuation(last_marker, candidate):
+        return True
+    previous_number = _ordered_marker_value(last_marker)
+    candidate_number = _ordered_marker_value(candidate)
+    return previous_number is not None and candidate_number == previous_number + 1
+
+
 def _can_continue_list(group: list[ExtractionRecord], candidate: ExtractionRecord) -> bool:
     first_marker = next((record for record in group if _list_marker_family(record)), None)
     last_marker = next((record for record in reversed(group) if _list_marker_family(record)), None)
@@ -118,12 +144,12 @@ def _can_continue_list(group: list[ExtractionRecord], candidate: ExtractionRecor
     candidate_family = _list_marker_family(candidate)
     if candidate_family:
         if candidate_family == "hint":
-            return _same_page_flow(group[-1], candidate) if candidate.page == group[-1].page else _same_column(group[-1], candidate) and _cross_page_flow(group[-1], candidate)
+            return _same_page_flow(group[-1], candidate) if candidate.page == group[-1].page else _same_column(group[-1], candidate) and _cross_page_flow(group[-1], candidate) and _continues_list_across_page(last_marker, candidate)
         if candidate_family != _list_marker_family(first_marker):
             return False
-        return _same_page_flow(group[-1], candidate) if candidate.page == group[-1].page else _same_column(last_marker, candidate) and _cross_page_flow(group[-1], candidate)
+        return _same_page_flow(group[-1], candidate) if candidate.page == group[-1].page else _same_column(last_marker, candidate) and _cross_page_flow(group[-1], candidate) and _continues_list_across_page(last_marker, candidate)
     if candidate.role_hint == "list_continuation":
-        return _nearby_line(group[-1], candidate) if candidate.page == group[-1].page else _cross_page_flow(group[-1], candidate)
+        return _nearby_line(group[-1], candidate) if candidate.page == group[-1].page else _cross_page_flow(group[-1], candidate) and _explicit_list_continuation(last_marker, candidate)
     return (
         candidate.page == group[-1].page
         and _nearby_line(group[-1], candidate)
