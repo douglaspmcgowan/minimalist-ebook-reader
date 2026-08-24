@@ -53,10 +53,13 @@ verification.
 python -m tools.pdf_to_ebook.cli input.pdf book.json --asset-root . --report conversion-report.json
 ```
 
-Git and repository-root Vercel exclusions keep the private package and root
-book outside public releases. An explicitly authorized private preview uses an
-allowlisted staging package and Vercel Authentication. See `MAP.md` for the
-current protected route and `TASK.md` for release gates.
+This private-local command writes `book.json`, `assets/`, and
+`conversion-report.json`; repository-root Git and Vercel exclusions guard all
+three outputs from public releases. Conversions sharing an output or asset root
+run serially, and each successful run replaces the package and its complete
+managed asset set. An explicitly authorized private preview uses an allowlisted
+staging package and Vercel Authentication. See `MAP.md` for the current
+protected route and `TASK.md` for release gates.
 
 ## ©️ Copyright
 

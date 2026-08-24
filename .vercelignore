@@ -1,6 +1,8 @@
 # Copyrighted source — never upload to the public deploy
 content-private/
 book.json
+/assets/
+/conversion-report.json
 _book.json.local
 *.pdf
 .local/

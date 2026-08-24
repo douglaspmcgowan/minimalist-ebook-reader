@@ -1,7 +1,10 @@
 import json
 import hashlib
 import os
+import subprocess
+import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -193,6 +196,119 @@ class ConvertPackageTests(unittest.TestCase):
             self.assertEqual(status, 2)
             self.assertEqual(output.read_text(encoding="utf-8"), '{"title":"existing"}\n')
             self.assertEqual(existing_asset.read_bytes(), b"existing-figure")
+
+    def test_successful_figureless_conversion_replaces_prior_managed_assets(self):
+        preflight = {"source": {"sha256": "synthetic", "page_count": 1, "metadata": {}}}
+        blocks = [semantic_block("paragraph", {"text": "A figureless replacement."}, 1, 0)]
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            output = root / "book.json"
+            stale_asset = root / "assets" / "stale.png"
+            stale_asset.parent.mkdir()
+            stale_asset.write_bytes(b"stale")
+
+            with patch("tools.pdf_to_ebook.cli.extract_pdf", return_value=(preflight, [])), patch(
+                "tools.pdf_to_ebook.cli.classify_records", return_value=blocks
+            ):
+                status = convert(root / "source.pdf", output, asset_root=root)
+
+            self.assertEqual(status, 0)
+            self.assertFalse(stale_asset.exists())
+            self.assertEqual(list((root / "assets").iterdir()), [])
+
+    def test_two_processes_cannot_publish_a_package_with_another_conversions_assets(self):
+        worker_source = r'''
+import hashlib
+import json
+import os
+import sys
+import time
+from pathlib import Path
+from unittest.mock import patch
+
+from tools.pdf_to_ebook.cli import convert
+from tools.pdf_to_ebook.model import Provenance, SemanticBlock
+
+root = Path(sys.argv[1])
+label = sys.argv[2]
+signal = Path(sys.argv[3])
+asset_bytes = label.encode("utf-8")
+preflight = {"source": {"sha256": label, "page_count": 1, "metadata": {"Title": label}}}
+blocks = [SemanticBlock(
+    kind="figure",
+    data={"asset": "assets/figure.bin", "alt": label, "sha256": hashlib.sha256(asset_bytes).hexdigest()},
+    provenance=[Provenance(page=1, bbox=(10, 20, 30, 40), reading_order=0)],
+    confidence=0.98,
+    evidence=["two-process-test"],
+)]
+
+def extract(_source, asset_output_dir=None):
+    asset = Path(asset_output_dir, "assets", "figure.bin")
+    asset.parent.mkdir()
+    asset.write_bytes(asset_bytes)
+    return preflight, []
+
+real_replace = os.replace
+def replace_with_first_writer_pause(source, destination):
+    result = real_replace(source, destination)
+    if label == "first" and Path(destination) == root / "assets":
+        signal.write_text("promoted", encoding="utf-8")
+        time.sleep(1.5)
+    return result
+
+with patch("tools.pdf_to_ebook.cli.extract_pdf", side_effect=extract), patch(
+    "tools.pdf_to_ebook.cli.classify_records", return_value=blocks
+), patch("tools.pdf_to_ebook.cli.os.replace", side_effect=replace_with_first_writer_pause):
+    status = convert(root / f"{label}.pdf", root / "book.json", asset_root=root)
+print(json.dumps({"label": label, "status": status}))
+'''
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            worker = root / "worker.py"
+            worker.write_text(worker_source, encoding="utf-8")
+            signal = root / "first-assets-promoted"
+            repository = Path(__file__).resolve().parents[2]
+            environment = os.environ.copy()
+            environment["PYTHONPATH"] = str(repository)
+            first = subprocess.Popen(
+                [sys.executable, str(worker), str(root), "first", str(signal)],
+                cwd=repository,
+                env=environment,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            self.addCleanup(self._terminate_process, first)
+            deadline = time.monotonic() + 10
+            while not signal.exists() and first.poll() is None and time.monotonic() < deadline:
+                time.sleep(0.02)
+            self.assertTrue(signal.exists(), "first conversion never reached asset promotion")
+            second = subprocess.Popen(
+                [sys.executable, str(worker), str(root), "second", str(signal)],
+                cwd=repository,
+                env=environment,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            self.addCleanup(self._terminate_process, second)
+            first_stdout, first_stderr = first.communicate(timeout=15)
+            second_stdout, second_stderr = second.communicate(timeout=15)
+            self.assertEqual(first.returncode, 0, first_stderr)
+            self.assertEqual(second.returncode, 0, second_stderr)
+            self.assertEqual(json.loads(first_stdout)["status"], 0)
+            self.assertEqual(json.loads(second_stdout)["status"], 0)
+
+            package = json.loads((root / "book.json").read_text(encoding="utf-8"))
+            figure = next(block for block in package["blocks"] if block["kind"] == "figure")
+            live_asset = root / figure["data"]["asset"]
+            self.assertEqual(hashlib.sha256(live_asset.read_bytes()).hexdigest(), figure["data"]["sha256"])
+
+    @staticmethod
+    def _terminate_process(process: subprocess.Popen) -> None:
+        if process.poll() is None:
+            process.kill()
+            process.communicate()
 
     def test_package_promotion_failure_rolls_back_existing_figure_assets(self):
         with tempfile.TemporaryDirectory() as temp:
