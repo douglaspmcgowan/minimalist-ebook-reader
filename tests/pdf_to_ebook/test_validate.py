@@ -97,6 +97,83 @@ class ValidationTests(unittest.TestCase):
         self.assertEqual(report.items[0].severity, "high")
         self.assertFalse(report.items[0].approved)
 
+    def test_extraction_approval_requires_the_generated_finding_scope(self):
+        record = ExtractionRecord(
+            page=2,
+            bbox=(10, 20, 30, 40),
+            reading_order=3,
+            text="Synthetic prose.",
+            metadata={"review": [{
+                "code": "uncertain-reading-order",
+                "severity": "high",
+                "message": "Review required.",
+                "object_id": "column-2",
+            }]},
+        )
+        initial = validate_release([block(page=2)], page_count=2, intentionally_excluded_pages=[1], extraction_records=[record])
+        finding = initial.items[0]
+        approval = ReviewItem(
+            code="different-code",
+            severity=finding.severity,
+            page=1,
+            message="Reviewed disposition.",
+            approved=True,
+            details={
+                "finding_id": finding.details["finding_id"],
+                "bbox": finding.details["bbox"],
+                "reading_order": finding.details["reading_order"],
+                "object_id": finding.details["object_id"],
+            },
+        )
+
+        report = validate_release(
+            [block(page=2)],
+            page_count=2,
+            intentionally_excluded_pages=[1],
+            extraction_records=[record],
+            review_items=[approval],
+        )
+
+        generated = next(item for item in report.items if item.code == "uncertain-reading-order")
+        self.assertFalse(report.releasable)
+        self.assertFalse(generated.approved)
+        self.assertEqual(generated.page, 2)
+        self.assertEqual(generated.message, "Review required.")
+
+    def test_matching_extraction_approval_retains_finding_and_records_disposition(self):
+        record = ExtractionRecord(
+            page=1,
+            bbox=(10, 20, 30, 40),
+            reading_order=3,
+            text="Synthetic prose.",
+            metadata={"review": [{
+                "code": "widget-label-name-fallback",
+                "severity": "high",
+                "message": "Generated finding.",
+                "field_name": "email",
+            }]},
+        )
+        finding = validate_release([block()], page_count=1, extraction_records=[record]).items[0]
+        approval = ReviewItem(
+            code=finding.code,
+            severity=finding.severity,
+            page=finding.page,
+            message="The field-name fallback is accurate.",
+            approved=True,
+            details={
+                key: finding.details[key]
+                for key in ("finding_id", "bbox", "reading_order", "field_name")
+            },
+        )
+
+        report = validate_release([block()], page_count=1, extraction_records=[record], review_items=[approval])
+
+        retained = next(item for item in report.items if item.details.get("finding_id") == finding.details["finding_id"])
+        self.assertTrue(report.releasable, [item.to_dict() for item in report.items])
+        self.assertTrue(retained.approved)
+        self.assertEqual(retained.message, "Generated finding.")
+        self.assertEqual(retained.details["disposition"], "The field-name fallback is accurate.")
+
     def test_low_confidence_semantics_enter_blocking_review(self):
         uncertain = block()
         uncertain.confidence = 0.6

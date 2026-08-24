@@ -55,17 +55,38 @@ def validate_release(
 ) -> ValidationReport:
     materialized = list(blocks)
     extracted = list(extraction_records)
-    items = list(review_items)
-    approved_finding_ids = {
-        item.details.get("finding_id")
-        for item in items
-        if item.approved and isinstance(item.details.get("finding_id"), str)
-    }
-    items.extend(
-        item
-        for item in _extraction_review_items(extracted)
-        if item.details.get("finding_id") not in approved_finding_ids
-    )
+    supplied_items = list(review_items)
+    generated_items = _extraction_review_items(extracted)
+    extraction_approvals = [item for item in supplied_items if _is_extraction_approval(item)]
+    items = [item for item in supplied_items if not _is_extraction_approval(item)]
+    for approval in extraction_approvals:
+        if not any(_approval_matches_finding(approval, finding) for finding in generated_items):
+            items.append(ReviewItem(
+                "invalid-extraction-approval",
+                "high",
+                approval.page,
+                "Approved extraction finding does not match the generated finding scope.",
+                details={
+                    "disposition": approval.message,
+                    "finding_id": approval.details.get("finding_id"),
+                },
+            ))
+    for finding in generated_items:
+        approval = next(
+            (item for item in extraction_approvals if _approval_matches_finding(item, finding)),
+            None,
+        )
+        if approval is None:
+            items.append(finding)
+            continue
+        items.append(ReviewItem(
+            finding.code,
+            finding.severity,
+            finding.page,
+            finding.message,
+            approved=True,
+            details={**finding.details, "disposition": approval.message},
+        ))
     covered: set[int] = set(int(page) for page in intentionally_excluded_pages)
     inventory: dict[str, int] = {}
     targets = {str(target) for target in reader_targets}
@@ -351,14 +372,14 @@ def _extraction_review_items(records: Iterable[ExtractionRecord]) -> list[Review
             if isinstance(finding.get("details"), dict):
                 details.update(finding["details"])
             details.update({"bbox": list(record.bbox), "reading_order": record.reading_order})
-            identity = "|".join((
+            details["finding_id"] = extraction_finding_id(
                 str(finding.get("code") or "extraction-review"),
-                str(record.page),
-                str(record.reading_order),
-                ",".join(str(value) for value in record.bbox),
-                str(details.get("object_id") or details.get("field_name") or ""),
-            ))
-            details["finding_id"] = hashlib.sha256(identity.encode("utf-8")).hexdigest()
+                record.page,
+                record.reading_order,
+                record.bbox,
+                details.get("object_id"),
+                details.get("field_name"),
+            )
             items.append(ReviewItem(
                 code=str(finding.get("code") or "extraction-review"),
                 severity=_extraction_review_severity(finding.get("severity")),
@@ -368,6 +389,45 @@ def _extraction_review_items(records: Iterable[ExtractionRecord]) -> list[Review
                 details=details,
             ))
     return items
+
+
+def extraction_finding_id(
+    code: str,
+    page: int,
+    reading_order: int,
+    bbox: Iterable[object],
+    object_id: object = None,
+    field_name: object = None,
+) -> str:
+    identity = "|".join((
+        str(code),
+        str(page),
+        str(reading_order),
+        ",".join(str(value) for value in bbox),
+        str(object_id or field_name or ""),
+    ))
+    return hashlib.sha256(identity.encode("utf-8")).hexdigest()
+
+
+def _is_extraction_approval(item: ReviewItem) -> bool:
+    return item.approved and isinstance(item.details.get("finding_id"), str)
+
+
+def _approval_matches_finding(approval: ReviewItem, finding: ReviewItem) -> bool:
+    if (
+        approval.code != finding.code
+        or approval.severity != finding.severity
+        or approval.page != finding.page
+        or str(approval.details.get("finding_id", "")).lower() != str(finding.details.get("finding_id", "")).lower()
+        or approval.details.get("reading_order") != finding.details.get("reading_order")
+        or approval.details.get("bbox") != finding.details.get("bbox")
+    ):
+        return False
+    return all(
+        approval.details.get(key) == finding.details.get(key)
+        for key in ("object_id", "field_name")
+        if key in finding.details
+    )
 
 
 def _extraction_review_severity(value: object) -> str:
