@@ -4,7 +4,7 @@
   "files": [
     {
       "path": "AGENTS.md",
-      "sha256": "a19c265e4a8dc9edd2ea7d87bcbc5ec5310d2dd62566736abe7d37152fc9004d"
+      "sha256": "fd5d3f6e6fdd9cbdba4331c9d3a720e79b2cc5bc846fdcb0cdf84dc782ff347b"
     },
     {
       "path": "CLAUDE.md",
@@ -16,11 +16,19 @@
     },
     {
       "path": "DESIGN.md",
-      "sha256": "6e2b30a3f16c89619a80ee6614b75726d5482ce56ae836b23e5df538d1eefa8d"
+      "sha256": "16f92b5ee77163c414b3b91b6499afca4b3f5d716a179faa7663d6ed9e880628"
     },
     {
-      "path": "MAP.md",
-      "sha256": "b339e6686282dbcd9a11cc410c551f14aa4eca34121027d2cc2a908f0635752a"
+      "path": "TASK.md",
+      "sha256": "db9bd38d0e76bd6998dfb1c4396ca45ee89fe06d45910bb6fe63cdad6b93eeaf"
+    },
+    {
+      "path": "LOG.md",
+      "sha256": "b51b45fa5cd1d4458526aed2ef9c7ba5c615a42aa2cca983f49e7dab612b4212"
+    },
+    {
+      "path": "BACKBURNER.md",
+      "sha256": "276093e713e6be406c484d52d75df6e741fa67349c390d7ec640417b25af788f"
     },
     {
       "path": "MEMORY.md",
@@ -28,7 +36,7 @@
     },
     {
       "path": "skills-manifest.json",
-      "sha256": "2cb2b95e9780f4e5a92bd8e143b336dd01d7a50d604b1404ef40f78f9d763f4c"
+      "sha256": "3d7703873b38af95589870cfa922d5dee54fb663852a69ff3eb8ae51719f618f"
     },
     {
       "path": "data-manifest.yaml",
@@ -56,11 +64,15 @@
     },
     {
       "path": ".agents\\feedback\\FEEDBACK-LOG.md",
-      "sha256": "910701471cff1b37855724432f3f5024d1e25b002f211bd93c772ee8b731f46d"
+      "sha256": "6457580a5415054bb34d13c10a471a3a6ce27b976c336581002c27b84e1c1343"
     },
     {
       "path": ".agents\\skill-pathways.json",
       "sha256": "33d529030f3723bc185f94090cf9fcd1007646f9c7d15a76f962104aa78a3b9b"
+    },
+    {
+      "path": "PRODUCT.md",
+      "sha256": "783f939e3201afb15fc205db852191a701dbc0db7510388488d4848a4a698749"
     }
   ]
 }

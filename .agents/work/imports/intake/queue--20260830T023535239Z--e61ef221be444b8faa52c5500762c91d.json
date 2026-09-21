@@ -1,0 +1,31 @@
+{
+  "queue_version": 1,
+  "queue_id": "6f099607-9551-457a-9d59-84f7953f629a",
+  "kind": "work-scope-discovery",
+  "operation": "add",
+  "queued_at": "2026-08-30T02:35:35.3077378Z",
+  "source_tool": "Add-ProjectIntake.ps1",
+  "payload": {
+    "CapabilityNotYetFiled": {
+      "IsPresent": true
+    },
+    "Relationship": "prerequisite",
+    "Evidence": [
+      "verifier=command; subject=current coverage scan found the project portable contract stale or absent; result=verified; reference=Outputs/coverage-audit-run.txt"
+    ],
+    "FixRationale": "The portable block is the behavior contract a fresh container receives when no global harness exists, and EnsureProject is its only authorized writer",
+    "CapabilityNotYetFiledReason": "intake sentinel: filer has no standing to assign a real capability, the owning session retracks it",
+    "DiscoveredFrom": "agent-harness cloudarea",
+    "SuggestedTrack": "intake",
+    "EntryDepth": "D1",
+    "FixLocation": "AGENTS.md portable managed block above agent-harness:portable:v4:end",
+    "Root": "C:\\Users\\dougl\\Projects\\boundaries-reader",
+    "SuggestedCapability": "intake.external",
+    "FixRecommendation": "After the agent-harness cloudarea commit is available, run Manage-Harness.ps1 -Action EnsureProject -Repository . and commit the generator-owned AGENTS.md managed block while preserving all project-owned content below it",
+    "Value": "high",
+    "Title": "Re-render the portable AGENTS contract for fresh environments",
+    "Risk": "medium",
+    "SourceDate": "2026-08-29",
+    "Id": "cloudarea-portable-contract-rerender-20260830"
+  }
+}

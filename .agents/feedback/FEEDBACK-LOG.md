@@ -74,3 +74,26 @@ verification: Run VERIFY.md; require linked page-8 contents, zero default-flow f
 owner: boundaries-reader
 status: enforced
 reviewTrigger: Any PDF import or reader change that alters semantic block structure, source coverage, contents navigation, or default-flow source imagery.
+
+## downselect-means-shortlist-20260829
+
+timestamp: 2026-08-30T01:45:30.3780396Z
+incident: A request to downselect a research field to several strong options was interpreted as authorization to choose the final two books.
+consequence: The report removed Douglas selection space and failed to provide a narrowed comparison set.
+rootCauseStatus: reproduced
+scope:
+  - path
+surfaces:
+  - Workplace reading-guide report
+enforcement:
+  - rule
+  - brief
+evidence:
+  - User correction in the active Codex task
+  - Existing report Answer section prescribed two books
+artifacts:
+  - 15 Life\Ministry & Church\Training Community\Workplace Influence and Relational Gospel Presence — Reading Guide 2026-08-26.md
+verification: Revised report now states that it presents a shortlist, contains five distinct book finalists, and gives contents plus tradeoffs for each.
+owner: Codex
+status: enforced
+reviewTrigger: Any future revision that converts a shortlist request into a final selection

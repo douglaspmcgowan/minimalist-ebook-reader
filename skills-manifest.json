@@ -38,7 +38,7 @@
     {
       "capability": "task-design",
       "canonical": [
-        "design"
+        "craft"
       ],
       "delivery": "vendored"
     },
@@ -52,17 +52,7 @@
     {
       "capability": "engineering-workflow",
       "canonical": [
-        "brainstorming",
-        "using-git-worktrees",
-        "writing-plans",
-        "subagent-driven-development",
-        "executing-plans",
-        "systematic-debugging",
-        "test-driven-development",
-        "requesting-code-review",
-        "receiving-code-review",
-        "verification-before-completion",
-        "finishing-a-development-branch"
+        "swe"
       ],
       "delivery": "vendored"
     },
@@ -76,21 +66,21 @@
     {
       "capability": "parallel-work",
       "canonical": [
-        "dispatching-parallel-agents"
+        "swe"
       ],
       "delivery": "vendored"
     },
     {
       "capability": "skill-discovery",
       "canonical": [
-        "using-superpowers"
+        "swe"
       ],
       "delivery": "vendored"
     },
     {
       "capability": "skill-authoring",
       "canonical": [
-        "writing-skills"
+        "ultraskill"
       ],
       "delivery": "vendored"
     },
@@ -112,7 +102,10 @@
       "capability": "harden-tail",
       "canonical": [
         "pathway",
-        "solo-review",
+        "tech-debt-audit",
+        "review",
+        "design-review",
+        "user",
         "probe",
         "hone",
         "spar"
@@ -151,6 +144,13 @@
       "capability": "correct",
       "canonical": [
         "correct"
+      ],
+      "delivery": "vendored"
+    },
+    {
+      "capability": "browser-use",
+      "canonical": [
+        "browser-use"
       ],
       "delivery": "vendored"
     }
