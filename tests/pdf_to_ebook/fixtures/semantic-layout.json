@@ -1,0 +1,16 @@
+{
+  "source": {"sha256": "synthetic", "page_count": 7},
+  "records": [
+    {"page": 1, "bbox": [72, 72, 540, 96], "reading_order": 0, "text": "Contents", "font_size": 20, "bold": true, "role_hint": "heading"},
+    {"page": 1, "bbox": [72, 112, 540, 132], "reading_order": 1, "text": "1  Starting Well", "font_size": 12, "links": [{"target_page": 2}], "role_hint": "contents"},
+    {"page": 1, "bbox": [92, 136, 540, 156], "reading_order": 2, "text": "A practical beginning", "font_size": 10, "links": [{"target_page": 2}], "role_hint": "contents_subtitle"},
+    {"page": 2, "bbox": [72, 72, 540, 92], "reading_order": 0, "text": "1. First step", "font_size": 11, "role_hint": "list_item"},
+    {"page": 2, "bbox": [72, 96, 540, 116], "reading_order": 1, "text": "2. Second step", "font_size": 11, "role_hint": "list_item"},
+    {"page": 3, "bbox": [72, 72, 540, 180], "reading_order": 0, "text": "Quarterly totals", "font_size": 11, "role_hint": "table", "table": {"caption": "Quarterly totals", "headers": ["Quarter", "Amount"], "rows": [["Q1", "$10"], ["Q2", "$12"]]}},
+    {"page": 4, "bbox": [72, 72, 540, 180], "reading_order": 0, "text": "Monthly plan", "font_size": 16, "role_hint": "form", "form": {"title": "Monthly plan", "instructions": "Enter planned amounts.", "fields": [{"label": "Income", "value": ""}, {"label": "Giving", "value": ""}]}},
+    {"page": 5, "bbox": [72, 72, 300, 320], "reading_order": 0, "text": "", "font_size": 0, "role_hint": "figure", "asset": "assets/chart.png", "alt": "A rising line chart", "caption": "Savings over time"},
+    {"page": 6, "bbox": [72, 72, 540, 92], "reading_order": 0, "text": "Index", "font_size": 20, "bold": true, "role_hint": "heading"},
+    {"page": 6, "bbox": [72, 112, 540, 132], "reading_order": 1, "text": "Budget, 12, 30", "font_size": 11, "role_hint": "index_entry"},
+    {"page": 7, "bbox": [72, 72, 540, 92], "reading_order": 0, "text": "A final paragraph.", "font_size": 11, "role_hint": "paragraph"}
+  ]
+}
