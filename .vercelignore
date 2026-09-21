@@ -1,6 +1,11 @@
 # Copyrighted source — never upload to the public deploy
 content-private/
 book.json
+/assets/
+**/.pdf-to-ebook-staging/
+/conversion-report.json
 _book.json.local
 *.pdf
+.local/
 .claude/
+.superpowers/
