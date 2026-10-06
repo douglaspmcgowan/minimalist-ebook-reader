@@ -269,7 +269,7 @@ body[data-space="roomy"]  { --lh:2.04; --para-gap:1.85em; }
   padding: var(--space-4) var(--space-3) var(--space-1);
 }
 .toc__item {
-  display: flex; gap: var(--space-2); align-items: baseline; flex-shrink: 0;
+  display: flex; gap: var(--space-2); align-items: last baseline; flex-shrink: 0;
   width: 100%; min-height: 44px; text-align: left; border: none; background: transparent;
   cursor: pointer; padding: var(--space-3); border-radius: var(--radius-sm);
   color: var(--ink); font-family: var(--font-body); font-size: var(--text-base);
@@ -285,10 +285,16 @@ body[data-space="roomy"]  { --lh:2.04; --para-gap:1.85em; }
 .toc__item.is-current .toc__num { color: var(--ink); }
 .toc__title { flex: 0 1 auto; min-width: 0; overflow-wrap: anywhere; }
 .toc__leader {
-  flex: 1 1 var(--space-4); min-width: var(--space-4); height: 0;
-  border-bottom: 1px dotted var(--line);
+  flex: 1 1 var(--space-6); min-width: var(--space-6); height: 0; align-self: last baseline;
+  border-bottom: 1px dotted color-mix(in srgb, var(--ink-soft) 55%, transparent);
 }
-.toc__now { flex-shrink: 0; font-family: var(--font-ui); font-size: var(--text-sm); color: var(--accent-ink); }
+.toc__now {
+  flex-shrink: 0; display: inline-flex; align-items: center; gap: var(--space-2);
+  font-family: var(--font-ui); font-size: var(--text-sm); font-weight: 500; color: var(--ink);
+}
+.toc__now::before {
+  content: ""; width: 6px; height: 6px; border-radius: var(--radius-pill); background: var(--accent); flex-shrink: 0;
+}
 .toc__page {
   flex-shrink: 0; min-width: var(--space-5); text-align: right;
   font-family: var(--font-ui); font-size: var(--text-sm); font-variant-numeric: tabular-nums;
