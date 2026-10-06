@@ -11,7 +11,9 @@
     },
     {
       "capability": "recon",
-      "canonical": [],
+      "canonical": [
+        "recon"
+      ],
       "commands": [
         "recon"
       ],
@@ -19,7 +21,9 @@
     },
     {
       "capability": "ultra-skill",
-      "canonical": [],
+      "canonical": [
+        "ultraskill"
+      ],
       "commands": [
         "ultraskill"
       ],
@@ -27,7 +31,9 @@
     },
     {
       "capability": "task-design",
-      "canonical": [],
+      "canonical": [
+        "craft"
+      ],
       "commands": [
         "task",
         "design"
@@ -44,17 +50,7 @@
     {
       "capability": "engineering-workflow",
       "canonical": [
-        "brainstorming",
-        "using-git-worktrees",
-        "writing-plans",
-        "subagent-driven-development",
-        "executing-plans",
-        "systematic-debugging",
-        "test-driven-development",
-        "requesting-code-review",
-        "receiving-code-review",
-        "verification-before-completion",
-        "finishing-a-development-branch"
+        "swe"
       ],
       "delivery": "vendored"
     },
@@ -68,27 +64,29 @@
     {
       "capability": "parallel-work",
       "canonical": [
-        "dispatching-parallel-agents"
+        "swe"
       ],
       "delivery": "vendored"
     },
     {
       "capability": "skill-discovery",
       "canonical": [
-        "using-superpowers"
+        "swe"
       ],
       "delivery": "vendored"
     },
     {
       "capability": "skill-authoring",
       "canonical": [
-        "writing-skills"
+        "ultraskill"
       ],
       "delivery": "vendored"
     },
     {
       "capability": "design-review",
-      "canonical": [],
+      "canonical": [
+        "design-review"
+      ],
       "commands": [
         "design-review"
       ],
@@ -104,7 +102,16 @@
     },
     {
       "capability": "harden-tail",
-      "canonical": [],
+      "canonical": [
+        "pathway",
+        "tech-debt-audit",
+        "review",
+        "design-review",
+        "user",
+        "probe",
+        "hone",
+        "spar"
+      ],
       "commands": [
         "pathway",
         "solo-review",
@@ -123,7 +130,9 @@
     },
     {
       "capability": "probe",
-      "canonical": [],
+      "canonical": [
+        "probe"
+      ],
       "commands": [
         "probe"
       ],
@@ -131,7 +140,9 @@
     },
     {
       "capability": "spar",
-      "canonical": [],
+      "canonical": [
+        "spar"
+      ],
       "commands": [
         "spar"
       ],
@@ -148,6 +159,13 @@
       "capability": "correct",
       "canonical": [
         "correct"
+      ],
+      "delivery": "vendored"
+    },
+    {
+      "capability": "browser-use",
+      "canonical": [
+        "browser-use"
       ],
       "delivery": "vendored"
     }
