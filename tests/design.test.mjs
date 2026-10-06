@@ -94,3 +94,29 @@ test("page identity metas", () => {
   assert.ok(html.includes('name="theme-color"'));
   assert.ok(html.includes('property="og:image"'));
 });
+
+test("Cormorant Garamond is loaded at weight 500 with display=swap", () => {
+  assert.ok(/family=Cormorant\+Garamond:ital,wght@0,500;1,500/.test(html));
+  assert.ok(/family=Newsreader:ital,opsz,wght@0,6\.\.72,400;1,6\.\.72,400/.test(html));
+  assert.ok(html.includes("display=swap"));
+  assert.ok(/--font-display:\s*"Cormorant Garamond"/.test(css));
+});
+
+test("--accent #CD9396 appears in every theme block", () => {
+  const themes = blocks(cssNoComments).filter((b) => /^(:root,\s*)?\[data-theme="[a-z]+"\]$|^body:not\(\[data-theme\]\)$/.test(b.selector));
+  assert.ok(themes.length >= 6, String(themes.length));
+  for (const b of themes) assert.ok(/--accent:\s*#CD9396\b/i.test(b.body), b.selector);
+});
+
+test("no retired typefaces anywhere", () => {
+  for (const [n, src] of [["index.html", html], ["styles.css", css], ["app.js", js]])
+    assert.ok(!/Fraunces|\bInter\b|IBM Plex Mono|Instrument Serif/.test(src), n);
+});
+
+test("only weights 400 and 500 in CSS and font URL", () => {
+  for (const v of declValues("font-weight")) assert.ok(v === "400" || v === "500", v);
+  const url = html.match(/fonts\.googleapis\.com\/css2\?[^"]+/)[0];
+  const weights = [...url.matchAll(/(?:^|[,;])(?:0|1),(?:6\.\.72,)?(\d+)(?=;|&|$)|wght@0,(?:6\.\.72,)?(\d+)/g)].map((m) => m[1] || m[2]);
+  assert.ok(weights.length >= 2);
+  for (const w of weights) assert.ok(w === "400" || w === "500", w);
+});
