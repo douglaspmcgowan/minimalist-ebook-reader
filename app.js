@@ -30,14 +30,16 @@ function applyPrefs() {
   document.body.dataset.size = state.prefs.size;
   document.body.dataset.space = state.prefs.space;
   // reflect active controls
-  document.querySelectorAll(".swatch").forEach((b) =>
-    b.classList.toggle("is-on", b.dataset.theme === state.prefs.theme));
-  document.querySelectorAll("#fontSeg button").forEach((b) =>
-    b.classList.toggle("is-on", b.dataset.font === state.prefs.font));
-  document.querySelectorAll("#sizeSeg button").forEach((b) =>
-    b.classList.toggle("is-on", b.dataset.size === state.prefs.size));
-  document.querySelectorAll("#spaceSeg button").forEach((b) =>
-    b.classList.toggle("is-on", b.dataset.space === state.prefs.space));
+  const mark = (sel, key) =>
+    document.querySelectorAll(sel).forEach((b) => {
+      const on = b.dataset[key] === state.prefs[key];
+      b.classList.toggle("is-on", on);
+      b.setAttribute("aria-pressed", String(on));
+    });
+  mark(".swatch", "theme");
+  mark("#fontSeg button", "font");
+  mark("#sizeSeg button", "size");
+  mark("#spaceSeg button", "space");
 }
 
 /* ---------- data loading ---------- */
@@ -67,10 +69,10 @@ function blocksOf(ch) {
 /* ---------- rendering ---------- */
 function renderCover() {
   const b = state.book;
-  $("#coverKicker").textContent = b._source === "book.sample.json" ? "Public-domain sample" : "An online reader";
   $("#coverTitle").textContent = b.title || "Untitled";
   $("#coverSub").textContent = b.subtitle || "";
   $("#coverSub").hidden = !b.subtitle;
+  $("#beginBtn").disabled = false;
   $("#coverBy").textContent = b.author ? b.author : "";
   $("#barTitle").textContent = b.title || "Reader";
 
@@ -107,7 +109,6 @@ function renderChapter(i) {
   const art = $("#chapter");
   const blocks = blocksOf(c);
   let html = "";
-  if (c.part) html += `<div class="chapter__part">${c.part}</div>`;
   html += `<div class="chapter__no">Chapter ${c.number}</div>`;
   html += `<h1 class="chapter__title">${esc(c.title)}</h1>`;
   html += `<div class="chapter__rule"></div>`;
@@ -219,7 +220,10 @@ async function lookupVerse(ref) {
 
 function positionVersePanel(anchor) {
   const panel = $("#verse");
-  if (window.innerWidth <= 560) return; // CSS handles bottom-sheet
+  if (window.innerWidth <= 560) { // CSS handles bottom-sheet
+    panel.style.left = ""; panel.style.top = "";
+    return;
+  }
   const r = anchor.getBoundingClientRect();
   const pw = panel.offsetWidth, ph = panel.offsetHeight;
   const margin = 12;
@@ -252,10 +256,10 @@ async function openVerse(btn) {
   if (v) {
     $("#verseRef").textContent = v.reference;
     $("#verseBody").textContent = v.text;
-    $("#verseNote").textContent = "World English Bible · public domain";
+    $("#verseNote").textContent = "World English Bible, public domain";
   } else {
-    $("#verseBody").textContent = "Couldn’t load this passage (offline or not found).";
-    $("#verseNote").textContent = "World English Bible · public domain";
+    $("#verseBody").textContent = "Couldn’t load this passage. Check your connection and tap the reference again.";
+    $("#verseNote").textContent = "World English Bible, public domain";
   }
   positionVersePanel(btn);
 }
@@ -296,12 +300,12 @@ function showCover() {
 /* ---------- progress ---------- */
 function updateProgress() {
   const bar = $("#progressBar");
-  if (state.chapter < 0) { bar.style.width = "0%"; return; }
+  if (state.chapter < 0) { bar.style.transform = "scaleX(0)"; return; }
   const total = state.book.chapters.length;
   const docH = document.documentElement.scrollHeight - window.innerHeight;
   const within = docH > 0 ? Math.min(1, window.scrollY / docH) : 0;
-  const pct = ((state.chapter + within) / total) * 100;
-  bar.style.width = pct.toFixed(2) + "%";
+  const p = (state.chapter + within) / total;
+  bar.style.transform = "scaleX(" + p.toFixed(4) + ")";
 }
 
 /* ---------- contents drawer ---------- */
@@ -310,6 +314,8 @@ function openTOC() {
   toc.hidden = false; scrim.hidden = false;
   toc.classList.remove("is-closing");
   document.body.style.overflow = "hidden";
+  $("#tocBtn").setAttribute("aria-expanded", "true");
+  $("#tocClose").focus();
 }
 function closeTOC() {
   const toc = $("#toc"), scrim = $("#scrim");
@@ -317,6 +323,8 @@ function closeTOC() {
   toc.classList.add("is-closing");
   scrim.hidden = true;
   document.body.style.overflow = "";
+  $("#tocBtn").setAttribute("aria-expanded", "false");
+  $("#tocBtn").focus();
   setTimeout(() => { toc.hidden = true; toc.classList.remove("is-closing"); }, 340);
 }
 
@@ -325,13 +333,21 @@ function toggleSettings(force) {
   const pop = $("#settings");
   const show = force !== undefined ? force : pop.hidden;
   pop.hidden = !show;
+  $("#aaBtn").setAttribute("aria-expanded", String(show));
 }
 
 /* ---------- toast ---------- */
+const ICON_OK = '<svg class="toast__icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l3 3 5-6"/></svg>';
+const ICON_ERROR = '<svg class="toast__icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l9.5 16.5h-19z"/><path d="M12 10v4.5M12 17.5v.01"/></svg>';
 let toastTimer;
-function toast(msg) {
+function toast(msg, kind = "ok") {
   const t = $("#toast");
-  t.textContent = msg; t.hidden = false;
+  t.innerHTML = kind === "error" ? ICON_ERROR : ICON_OK;
+  const span = document.createElement("span");
+  span.textContent = msg;
+  t.appendChild(span);
+  t.classList.toggle("is-error", kind === "error");
+  t.hidden = false;
   requestAnimationFrame(() => t.classList.add("is-on"));
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => {
@@ -370,9 +386,9 @@ function handleFile(file) {
       } else {
         data = parsePlainText(file.name, reader.result);
       }
-    } catch (e) { toast("Couldn't read that file."); return; }
+    } catch (e) { toast("Couldn't read that file. Choose a .json or .txt book.", "error"); return; }
     if (!data || !Array.isArray(data.chapters) || !data.chapters.length) {
-      toast("No chapters found in that file."); return;
+      toast("No chapters found in that file. Add chapter headings or a chapters list.", "error"); return;
     }
     data._source = "local-file";
     state.book = data;
@@ -458,6 +474,8 @@ function wire() {
 /* ---------- boot ---------- */
 (async function init() {
   const saved = load();
+  const dark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+  state.prefs.theme = dark ? "dusk" : "blush";
   state.prefs = { ...state.prefs, ...pick(saved, ["theme", "font", "size", "space"]) };
   applyPrefs();
   wire();
@@ -470,8 +488,8 @@ function wire() {
 
   state.book = await fetchBook();
   if (!state.book) {
-    $("#coverTitle").textContent = "No book found";
-    $("#coverSub").textContent = "Use the ↑ button to load a .json or .txt book file.";
+    $("#coverTitle").textContent = "No book loaded";
+    $("#coverSub").textContent = "Load a .json or .txt book with the upload button at the top right.";
     $("#coverSub").hidden = false;
     $("#beginBtn").hidden = true;
     return;

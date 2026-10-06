@@ -107,18 +107,36 @@ The full universal rules are `~/.agents/DESIGN.md`. Where a library entry and a 
 
 ## Product-specific typography
 
-- Body:
-- Display:
-- Monospace:
+- Display: Newsreader (Google Fonts, `display=swap`). Serif reason: this is a book; the reading face carries the display role so the page stays one family.
+- Body: Newsreader, set at the reader's chosen size `--fs`.
+- Interface (labels, settings, pager, toast, and the "Sans" reading option): the platform sans stack in `--font-ui`. Not a display voice.
+- Monospace: none. The reader renders no code.
+- Formats: chapter numbers are plain integers; dates appear only inside book text and are not reformatted; no units.
 
 ## Tokens and components
 
-- Record project-specific tokens, established components, and allowed variants.
+Every value lives as a custom property in `styles.css` `:root` or a `[data-theme]` block.
+
+- Type scale, ratio 1.25 on 1rem: `--text-sm` .8rem, `--text-base` 1rem, `--text-md` 1.25rem, `--text-lg` 1.5625rem, `--text-xl` clamp(1.953rem, 7vw, 3.052rem), `--text-2xl` clamp(3.052rem, 13vw, 4.768rem). Weights 400 and 500 only.
+- Spacing: `--space-1` .25rem through `--space-9` 6rem (4, 8, 12, 16, 24, 32, 48, 64, 96 px).
+- Radii: `--radius-sm` 8px (list items, segment buttons), `--radius-md` 12px (icon buttons, segment track), `--radius-lg` 16px (popover, verse panel, sheet), `--radius-pill` (primary button, pager, toast, swatches).
+- Surfaces per theme: `--bg` page, `--surface` raised, `--surface-sunk` tonal, `--line` hairline; text `--ink`, `--ink-soft` (>= 4.5:1 on `--bg`); accent `--accent`, `--accent-soft`, `--accent-ink` (accent-coloured text and focus ring, >= 4.5:1), `--on-accent`; `--shadow-tint`, `--scrim`.
+- Status: `--status-error`, `--status-ok`, separate from the accent; toasts pair them with words.
+- Elevation: `--shadow-raised` (popover, verse panel), `--shadow-overlay` (contents drawer, bottom sheet). Shadow only; no border on a shadowed surface. The top bar takes only a hairline once scrolled.
+- Motion: `--ease-out`, `--ease-emph`; `--dur-1` 150ms to `--dur-4` 600ms; all redefined to 1ms under reduced motion.
+- Components: top bar (icon buttons), settings popover (theme swatches, segmented controls), contents drawer, cover, chapter with drop cap, pager, verse reference and panel, toast. Primary button filled, pager tonal.
 
 ## Interaction and accessibility
 
-- Record project-specific states, motion, responsive behavior, and accessibility constraints.
+- Every focusable element shows a 2px `--accent-ink` `:focus-visible` ring.
+- Touch targets are at least 44 by 44 px with 8px between neighbours; settings rows put the label above the control.
+- The contents drawer and settings popover are dialogs; the drawer moves focus in on open and back to its button on close. Selected swatches and segments carry `aria-pressed` and a visible non-colour cue.
+- Keyboard: Left and Right change chapter, `t` opens contents, Escape closes any overlay.
+- With no saved theme the reader follows `prefers-color-scheme` (dark selects Dusk).
+- Regression check: `node --test tests/design.test.mjs`.
 
 ## Exceptions
 
-- Record a universal-rule exception only with the evidence and verifier that justify it.
+- Colour count: six user-selectable paper themes each define their own twelve tokens, so the app-wide colour count exceeds ten by design. Each theme alone stays within its token set, and no literal colour appears outside a token block. Verifier: `tests/design.test.mjs`.
+- Reading size: `--fs` takes four user-selected values, and the drop cap and verse superscript are em multiples of it. They are the reader's setting, not extra steps of the scale.
+- Container queries: no component is reused at two widths, so `@container` has no current use.
