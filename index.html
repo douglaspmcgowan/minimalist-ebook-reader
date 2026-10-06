@@ -14,7 +14,7 @@
   <link rel="icon" href="favicon.svg" type="image/svg+xml" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400..500;1,6..72,400&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;1,500&family=Newsreader:ital,opsz,wght@0,6..72,400;1,6..72,400&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body data-font="serif">
@@ -24,12 +24,12 @@
   <!-- top bar -->
   <header class="bar" id="bar">
     <button class="bar__btn" id="tocBtn" aria-label="Table of contents" aria-expanded="false" title="Contents">
-      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5H21"/><path d="M3 12H21"/><path d="M3 19H21"/></svg>
     </button>
-    <div class="bar__title" id="barTitle">Boundaries</div>
+    <div class="bar__title" id="barTitle" title="Boundaries">Boundaries</div>
     <div class="bar__right">
       <button class="bar__btn" id="loadBtn" aria-label="Load your own book" title="Load your own book file">
-        <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4m0 0L8 8m4-4 4 4M5 20h14"/></svg>
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 20L18 20"/><path d="M12 16V4M12 4L15.5 7.5M12 4L8.5 7.5"/></svg>
       </button>
       <button class="bar__btn" id="aaBtn" aria-label="Reading settings" aria-expanded="false" aria-controls="settings" title="Reading settings">
         <span class="aa">Aa</span>
@@ -42,12 +42,12 @@
     <div class="pop__row">
       <span class="pop__label">Theme</span>
       <div class="swatches" id="swatches">
-        <button class="swatch" data-theme="blush" aria-label="Blush" aria-pressed="false" title="Blush"></button>
-        <button class="swatch" data-theme="sage" aria-label="Sage" aria-pressed="false" title="Sage"></button>
-        <button class="swatch" data-theme="mist" aria-label="Mist" aria-pressed="false" title="Mist"></button>
-        <button class="swatch" data-theme="butter" aria-label="Butter" aria-pressed="false" title="Butter"></button>
-        <button class="swatch" data-theme="lilac" aria-label="Lilac" aria-pressed="false" title="Lilac"></button>
-        <button class="swatch" data-theme="dusk" aria-label="Dusk" aria-pressed="false" title="Dusk"></button>
+        <button class="swatch" data-theme="blush" aria-pressed="false"><span class="swatch__chip" aria-hidden="true">Aa</span><span class="swatch__name">Blush</span></button>
+        <button class="swatch" data-theme="sage" aria-pressed="false"><span class="swatch__chip" aria-hidden="true">Aa</span><span class="swatch__name">Sage</span></button>
+        <button class="swatch" data-theme="mist" aria-pressed="false"><span class="swatch__chip" aria-hidden="true">Aa</span><span class="swatch__name">Mist</span></button>
+        <button class="swatch" data-theme="butter" aria-pressed="false"><span class="swatch__chip" aria-hidden="true">Aa</span><span class="swatch__name">Butter</span></button>
+        <button class="swatch" data-theme="lilac" aria-pressed="false"><span class="swatch__chip" aria-hidden="true">Aa</span><span class="swatch__name">Lilac</span></button>
+        <button class="swatch" data-theme="dusk" aria-pressed="false"><span class="swatch__chip" aria-hidden="true">Aa</span><span class="swatch__name">Dusk</span></button>
       </div>
     </div>
     <div class="pop__row">
@@ -81,7 +81,7 @@
     <div class="toc__head">
       <span id="tocTitle">Contents</span>
       <button class="bar__btn" id="tocClose" aria-label="Close contents">
-        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.75827 17.2426L12.0009 12M17.2435 6.75736L12.0009 12M12.0009 12L6.75827 6.75736M12.0009 12L17.2435 17.2426"/></svg>
       </button>
     </div>
     <nav class="toc__list" id="tocList"></nav>
@@ -104,13 +104,15 @@
 
     <!-- chapter footer nav -->
     <footer class="pager" id="pager" hidden>
-      <button class="pager__btn" id="prevBtn">
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>
-        <span id="prevLabel">Previous</span>
+      <button class="pager__btn" id="prevBtn" aria-label="Cover">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6L9 12L15 18"/></svg>
+        <span class="pager__full" id="prevLabel">Previous</span>
+        <span class="pager__short" id="prevShort">Previous</span>
       </button>
-      <button class="pager__btn pager__btn--next" id="nextBtn">
-        <span id="nextLabel">Next</span>
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>
+      <button class="pager__btn pager__btn--next" id="nextBtn" aria-label="Next">
+        <span class="pager__full" id="nextLabel">Next</span>
+        <span class="pager__short" id="nextShort">Next</span>
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6L15 12L9 18"/></svg>
       </button>
     </footer>
   </main>
@@ -122,13 +124,14 @@
   <div class="vscrim" id="vscrim" hidden></div>
   <div class="verse" id="verse" role="dialog" aria-label="Scripture reference" hidden>
     <button class="verse__close" id="verseClose" aria-label="Close">
-      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.75827 17.2426L12.0009 12M17.2435 6.75736L12.0009 12M12.0009 12L6.75827 6.75736M12.0009 12L17.2435 17.2426"/></svg>
     </button>
     <div class="verse__ref" id="verseRef"></div>
     <div class="verse__body" id="verseBody"></div>
     <div class="verse__note" id="verseNote">World English Bible, public domain</div>
   </div>
 
+  <script src="pages.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

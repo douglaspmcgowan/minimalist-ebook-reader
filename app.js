@@ -59,11 +59,35 @@ async function fetchBook() {
   return null;
 }
 
-// normalize a chapter's content into typed blocks (supports legacy "paragraphs")
-function blocksOf(ch) {
-  if (Array.isArray(ch.blocks)) return ch.blocks;
-  if (Array.isArray(ch.paragraphs)) return ch.paragraphs.map((x) => ({ t: "p", x }));
-  return [];
+// chapter blocks and page estimates live in pages.js
+const { blocksOf, pageStarts } = Pages;
+
+// the book in hand: page equivalents are computed once per book
+function setBook(data) {
+  state.book = data;
+  state.pages = pageStarts(data.chapters);
+}
+
+/* ---------- running head ---------- */
+function setHead(bookTitle, chapterTitle) {
+  const el = $("#barTitle");
+  el.textContent = "";
+  const book = document.createElement("span");
+  book.className = "rh__book";
+  book.textContent = bookTitle;
+  el.appendChild(book);
+  let full = bookTitle;
+  if (chapterTitle) {
+    const sep = document.createElement("span");
+    sep.className = "rh__sep";
+    sep.textContent = " | ";
+    const ch = document.createElement("span");
+    ch.className = "rh__ch";
+    ch.textContent = chapterTitle;
+    el.append(sep, ch);
+    full = `${bookTitle} | ${chapterTitle}`;
+  }
+  el.title = full;
 }
 
 /* ---------- rendering ---------- */
@@ -74,7 +98,7 @@ function renderCover() {
   $("#coverSub").hidden = !b.subtitle;
   $("#beginBtn").disabled = false;
   $("#coverBy").textContent = b.author ? b.author : "";
-  $("#barTitle").textContent = b.title || "Reader";
+  setHead(b.title || "Reader");
 
   const saved = load();
   const r = $("#resumeLine");
@@ -97,11 +121,23 @@ function renderTOC() {
       list.appendChild(p); lastPart = c.part;
     }
     const btn = document.createElement("button");
-    btn.className = "toc__item" + (i === state.chapter ? " is-current" : "");
-    btn.innerHTML = `<span class="toc__num">${c.number}</span><span>${c.title}</span>`;
+    btn.type = "button";
+    const cur = i === state.chapter;
+    btn.className = "toc__item" + (cur ? " is-current" : i < state.chapter ? " is-read" : "");
+    if (cur) btn.setAttribute("aria-current", "true");
+    btn.innerHTML =
+      `<span class="toc__num">${esc(String(c.number))}</span>` +
+      `<span class="toc__title">${esc(String(c.title))}</span>` +
+      `<span class="toc__leader" aria-hidden="true"></span>` +
+      (cur ? `<span class="toc__now">Reading</span>` : "") +
+      `<span class="toc__page">${state.pages[i]}</span>`;
     btn.onclick = () => { closeTOC(); goto(i); };
     list.appendChild(btn);
   });
+  const note = document.createElement("p");
+  note.className = "toc__note";
+  note.textContent = "Page numbers are estimates at 275 words a page";
+  list.appendChild(note);
 }
 
 function renderChapter(i) {
@@ -130,9 +166,16 @@ function renderChapter(i) {
   const prev = $("#prevBtn"), next = $("#nextBtn");
   prev.disabled = i <= 0;
   next.disabled = i >= state.book.chapters.length - 1;
-  $("#prevLabel").textContent = i > 0 ? state.book.chapters[i - 1].title : "Cover";
-  $("#nextLabel").textContent = i < state.book.chapters.length - 1 ? state.book.chapters[i + 1].title : "The End";
-  $("#barTitle").textContent = `${c.number}. ${c.title}`;
+  const last = i >= state.book.chapters.length - 1;
+  const prevFull = i > 0 ? state.book.chapters[i - 1].title : "Cover";
+  const nextFull = !last ? state.book.chapters[i + 1].title : "The end";
+  $("#prevLabel").textContent = prevFull;
+  $("#nextLabel").textContent = nextFull;
+  $("#prevShort").textContent = i > 0 ? "Previous" : "Cover";
+  $("#nextShort").textContent = !last ? "Next" : "The end";
+  prev.setAttribute("aria-label", i > 0 ? `Previous: ${prevFull}` : prevFull);
+  next.setAttribute("aria-label", !last ? `Next: ${nextFull}` : nextFull);
+  setHead(state.book.title || "Reader", c.title);
 }
 
 const esc = (s) => s.replace(/[&<>]/g, (m) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[m]));
@@ -290,7 +333,6 @@ function showCover() {
   $("#chapter").hidden = true;
   $("#pager").hidden = true;
   $("#cover").hidden = false;
-  $("#barTitle").textContent = state.book.title;
   renderCover();
   renderTOC();
   window.scrollTo({ top: 0 });
@@ -325,7 +367,8 @@ function closeTOC() {
   document.body.style.overflow = "";
   $("#tocBtn").setAttribute("aria-expanded", "false");
   $("#tocBtn").focus();
-  setTimeout(() => { toc.hidden = true; toc.classList.remove("is-closing"); }, 340);
+  const dur = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--dur-3")) || 1;
+  setTimeout(() => { toc.hidden = true; toc.classList.remove("is-closing"); }, dur);
 }
 
 /* ---------- settings ---------- */
@@ -337,8 +380,8 @@ function toggleSettings(force) {
 }
 
 /* ---------- toast ---------- */
-const ICON_OK = '<svg class="toast__icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l3 3 5-6"/></svg>';
-const ICON_ERROR = '<svg class="toast__icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l9.5 16.5h-19z"/><path d="M12 10v4.5M12 17.5v.01"/></svg>';
+const ICON_OK = '<svg class="toast__icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l3 3 5-6"/></svg>';
+const ICON_ERROR = '<svg class="toast__icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l9.5 16.5h-19z"/><path d="M12 10v4.5M12 17.5v.01"/></svg>';
 let toastTimer;
 function toast(msg, kind = "ok") {
   const t = $("#toast");
@@ -391,7 +434,7 @@ function handleFile(file) {
       toast("No chapters found in that file. Add chapter headings or a chapters list.", "error"); return;
     }
     data._source = "local-file";
-    state.book = data;
+    setBook(data);
     localStorage.removeItem(STORE); // fresh book → reset position, keep prefs handled below
     save(state.prefs);
     showCover();
@@ -486,14 +529,15 @@ function wire() {
     if (vr.ok) state.verses = await vr.json();
   } catch { /* none bundled — live API fallback still works */ }
 
-  state.book = await fetchBook();
-  if (!state.book) {
+  const fetched = await fetchBook();
+  if (!fetched) {
     $("#coverTitle").textContent = "No book loaded";
     $("#coverSub").textContent = "Load a .json or .txt book with the upload button at the top right.";
     $("#coverSub").hidden = false;
     $("#beginBtn").hidden = true;
     return;
   }
+  setBook(fetched);
   document.title = `${state.book.title} — Reader`;
   showCover();
 })();

@@ -105,38 +105,133 @@ The full universal rules are `~/.agents/DESIGN.md`. Where a library entry and a 
 **This list is enumerated because it has to be.** A cloud or container session has no `~/.agents` to walk, so this block is the only routing it gets — which also means a leaf missing here is a leaf that session cannot reach at all. `craft/` and `preflight.md` were absent until 2026-08-07 and every project copy inherited the gap. `Test-DesignLibraryIndex.ps1` now fails the build when this list falls behind the tree.
 <!-- agent-harness:universal-design:v1:end -->
 
-## Product-specific typography
+## Design system: Soft Editorial
 
-- Display: Newsreader (Google Fonts, `display=swap`). Serif reason: this is a book; the reading face carries the display role so the page stays one family.
-- Body: Newsreader, set at the reader's chosen size `--fs`.
-- Interface (labels, settings, pager, toast, and the "Sans" reading option): the platform sans stack in `--font-ui`. Not a display voice.
-- Monospace: none. The reader renders no code.
-- Formats: chapter numbers are plain integers; dates appear only inside book text and are not reformatted; no units.
+**Decision: extend.** The pastel paper themes, serif book typography and drop cap were already a good, distinct identity. This system completes it and does not replace it.
 
-## Tokens and components
+**Pulled from:** the *Soft Editorial* template in the bold template pack. Harness path: `.agents/design/slides/bold-template-pack/selection-index.json`, slug `soft-editorial`. Its spec is `.agents/design/slides/bold-template-pack/templates/soft-editorial/design.md`, in `pyrgos-ai/doug-harness`. Taken from it: Cormorant Garamond as the display voice in mixed roman and italic, warm paper grounds, a blush accent, and the drop cap. Its Work Sans body and its eyebrows are left behind: here the body is the book face, and eyebrows are banned.
 
-Every value lives as a custom property in `styles.css` `:root` or a `[data-theme]` block.
+**Character:** a quiet book. Generous leading, a drop cap, soft paper themes, and nothing on screen but the chapter.
 
-- Type scale, ratio 1.25 on 1rem: `--text-sm` .8rem, `--text-base` 1rem, `--text-md` 1.25rem, `--text-lg` 1.5625rem, `--text-xl` clamp(1.953rem, 7vw, 3.052rem), `--text-2xl` clamp(3.052rem, 13vw, 4.768rem). Weights 400 and 500 only.
-- Spacing: `--space-1` .25rem through `--space-9` 6rem (4, 8, 12, 16, 24, 32, 48, 64, 96 px).
-- Radii: `--radius-sm` 8px (list items, segment buttons), `--radius-md` 12px (icon buttons, segment track), `--radius-lg` 16px (popover, verse panel, sheet), `--radius-pill` (primary button, pager, toast, swatches).
-- Surfaces per theme: `--bg` page, `--surface` raised, `--surface-sunk` tonal, `--line` hairline; text `--ink`, `--ink-soft` (>= 4.5:1 on `--bg`); accent `--accent`, `--accent-soft`, `--accent-ink` (accent-coloured text and focus ring, >= 4.5:1), `--on-accent`; `--shadow-tint`, `--scrim`.
-- Status: `--status-error`, `--status-ok`, separate from the accent; toasts pair them with words.
-- Elevation: `--shadow-raised` (popover, verse panel), `--shadow-overlay` (contents drawer, bottom sheet). Shadow only; no border on a shadowed surface. The top bar takes only a hairline once scrolled.
-- Motion: `--ease-out`, `--ease-emph`; `--dur-1` 150ms to `--dur-4` 600ms; all redefined to 1ms under reduced motion.
-- Components: top bar (icon buttons), settings popover (theme swatches, segmented controls), contents drawer, cover, chapter with drop cap, pager, verse reference and panel, toast. Primary button filled, pager tonal.
+**Wrong if:** the reader gains notes, highlights or study tools.
+
+### Typography
+
+| Role | Face | Loads from | Weights |
+|---|---|---|---|
+| Display: cover title, chapter title, drop cap, section heads, contents | Cormorant Garamond, roman and italic | Google Fonts, `display=swap` | 500 |
+| Body: chapter prose, verse text, subtitles | Newsreader, roman and italic | Google Fonts, `display=swap` | 400 |
+| Interface: labels, settings, pager, toast, the Sans reading option | Platform sans `--font-ui` | system | 400, 500 |
+| Monospace | none, because the reader renders no code | | |
+
+Serif reason: it is a book. Cormorant Garamond replaces Fraunces as the display face, and the platform sans replaces Inter.
+
+- Scale: ratio 1.25 on 1rem. `--text-sm` is .8rem, `--text-base` is 1rem, `--text-md` is 1.25rem, `--text-lg` is 1.5625rem, `--text-xl` is clamp(1.953rem, 7vw, 3.052rem), and `--text-2xl` is clamp(3.052rem, 13vw, 4.768rem).
+- Reading size `--fs` takes the reader's own four settings.
+- The drop cap is 3.4em of `--fs` and spans three lines.
+- Measure: `--measure` 34rem, roughly 62 to 68 characters at the default size.
+- Tracking: display -0.015em, everything else 0.
+
+### Colour
+
+- One accent across every theme: **blush** `#CD9396`, which is `oklch(0.720 0.070 16)`, held in `--accent`.
+- On light papers, accent-coloured text uses `--accent-ink` `#A65458`, at least 4.7:1 on every light paper and surface. On Dusk, `--accent-ink` is the blush itself, at 6.2:1.
+- `--accent-soft` is the blush mixed into each paper, for selection and the current-chapter fill.
+- Papers, chosen by the reader: Blush, Sage, Mist, Butter, Lilac (light) and Dusk (dark). Each paper redefines `--bg` (page), `--surface` (raised), `--surface-sunk` (tonal), `--line` (hairline), `--ink`, `--ink-soft` (at least 4.5:1), `--shadow-tint` and `--scrim`.
+- Status: `--status-error` and `--status-ok` are separate from the accent and always paired with words.
+- Dark mode is Dusk: the same tokens redefined. It is the default when `prefers-color-scheme: dark` matches and the reader has no saved paper.
+
+### Space, shape, depth
+
+- Spacing: `--space-1` to `--space-9`, which is 4, 8, 12, 16, 24, 32, 48, 64 and 96px.
+- Radii:
+  - `--radius-sm` 8px: list rows, segment buttons, paper swatches
+  - `--radius-md` 12px: icon buttons, segment track
+  - `--radius-lg` 16px: popover, verse panel, sheet
+  - `--radius-pill`: primary button, pager, toast
+- Elevation:
+  - level 0 is the page
+  - level 1 `--shadow-raised` is the popover and verse panel, meaning it floats over the text you are reading
+  - level 2 `--shadow-overlay` is the drawer and bottom sheet, meaning it takes over the page until dismissed
+  - shadow only, never also a border
+- Motion tokens: `--ease-out` cubic-bezier(.22,.61,.36,1), `--ease-emph` cubic-bezier(.16,1,.3,1). Durations `--dur-1` 150ms, `--dur-2` 250ms, `--dur-3` 400ms, `--dur-4` 600ms. All are 1ms under reduced motion.
+
+### Icons
+
+Iconoir 7.12.1 (MIT), <https://iconoir.com>, listed in the harness `skills/hue/references/icon-kits.md` as the warm editorial kit. Icons are inline SVG at 1.5 stroke on a 24 grid: `menu`, `upload`, `xmark`, `nav-arrow-left`, `nav-arrow-right`. The favicon is drawn from `open-book`.
+
+### Components and states
+
+| Component | States |
+|---|---|
+| Icon button (top bar) | default, hover (tonal fill), focus-visible ring, active (scale .97), expanded (`aria-expanded`, tonal fill) |
+| Running head (top bar title) | cover: book title; chapter: book title and chapter title in Cormorant italic |
+| Primary button (Begin reading) | default (accent-ink fill), hover, focus, active, disabled while loading |
+| Paper swatch | default (a small paper chip in that theme's `--bg` with its `--ink` letter), hover, focus, active, selected (blush ring plus `aria-pressed`) |
+| Segmented control | default, hover, focus, active, selected (raised surface plus accent-ink text, `aria-pressed`) |
+| Contents table | Rows show the chapter numeral, the title, a dotted leader and a page-equivalent number. States: read (ink-soft), current (blush marker, accent-soft fill, "Reading" label), unread, hover, focus |
+| Chapter opening | running head, "Chapter n" in italic, title, hairline rule, drop cap on the first paragraph |
+| Section head (h2) | Cormorant italic, more space above than below |
+| Pager | tonal pill; hover, focus, active, disabled at the ends ("Cover", "The end") |
+| Verse reference and panel | reference (accent-ink, dotted underline), hover, active, panel loading ("Looking up"), loaded, error with recovery copy |
+| Toast | ok and error, each with words and status colour |
+| Cover | loading ("Opening the book"), loaded, empty ("No book loaded"), resume line |
+
+### Layout grid
+
+- One reading column of `--measure`, centred, with gutters of clamp(`--space-5`, 6vw, `--space-6`).
+- At 375: full-width column, top bar 56px, settings as a popover pinned to the right, verse panel as a bottom sheet.
+- At 768: the column is centred and the margins grow.
+- At 1440: the same column, with wide quiet margins. Nothing else on screen but the chapter.
+- The pager responds to its own container (`@container reader`). Under 30rem it shows "Previous" and "Next" without chapter titles.
+
+### Motion inventory
+
+| Motion | Communicates | Token |
+|---|---|---|
+| Cover rise, once on load | hierarchy: title, then subtitle, then author, then action | dur-4, ease-emph |
+| Chapter fade and rise | sequence: a new chapter has arrived | dur-4, ease-emph |
+| Drawer slide | state: contents open or closed | dur-3, ease-out |
+| Popover and panel fade-scale | state: settings or verse open | dur-2, ease-out |
+| Paper crossfade | state change: the paper colour changed | dur-3, ease-out |
+| Progress hairline scaleX | feedback: position in the book | dur-1, ease-out |
+| Control hover and press | feedback | dur-1, ease-out |
+| Toast rise | feedback: file loaded or failed | dur-2, ease-out |
+
+### Formats
+
+- Chapter numbers are integers.
+- Page equivalents are integers with tabular numerals, computed as cumulative words ÷ 275, rounded up, starting at page 1. The contents table says that they are estimates.
+- No dates or units are shown.
+
+### Recommendations
+
+- In this build: Cormorant Garamond display with blush accent across all papers.
+- In this build: running head with book and chapter title.
+- In this build: contents as a book's table, with dotted leaders, page equivalents and a "Reading" marker.
+- In this build: paper swatches with names.
+- In this build: Iconoir icon set.
+- In this build: 1px hairline progress.
+- In this build: `@container` pager.
+- In this build: section heads in Cormorant italic.
+- Proposed for later: remember the scroll position within a chapter, not only the chapter.
+- Proposed for later: View Transitions API for chapter turns, with a reduced-motion fallback.
+- Proposed for later: a persistent contents column at 1440 and above, on toggle, closed by default.
+- Proposed for later: self-host both faces with metric-matched fallbacks (`size-adjust`) to remove any reflow on font swap.
+- Proposed for later: EPUB import beside .json and .txt.
+- Proposed for later: a colophon page after the last chapter, with title, author and source.
+
+### Exceptions
+
+- Colour count: six user-selectable papers each define their own tokens, so the app-wide colour count exceeds ten by design. No literal colour appears outside a token block. Verifier: `node --test tests/design.test.mjs`.
+- Reading size `--fs` takes four reader-chosen values, and the drop cap and verse superscript are em multiples of it.
 
 ## Interaction and accessibility
 
 - Every focusable element shows a 2px `--accent-ink` `:focus-visible` ring.
-- Touch targets are at least 44 by 44 px with 8px between neighbours; settings rows put the label above the control.
-- The contents drawer and settings popover are dialogs; the drawer moves focus in on open and back to its button on close. Selected swatches and segments carry `aria-pressed` and a visible non-colour cue.
-- Keyboard: Left and Right change chapter, `t` opens contents, Escape closes any overlay.
-- With no saved theme the reader follows `prefers-color-scheme` (dark selects Dusk).
+- Targets are at least 44 by 44px, with 8px between neighbours.
+- In settings, the label sits above its control.
+- The contents drawer and the settings popover are dialogs. The drawer moves focus in on open and back to its button on close.
+- Swatches and segments carry `aria-pressed` and a visible cue that is not colour alone.
+- Keyboard: Left and Right turn chapters, `t` opens the contents, and Escape closes any overlay.
 - Regression check: `node --test tests/design.test.mjs`.
-
-## Exceptions
-
-- Colour count: six user-selectable paper themes each define their own twelve tokens, so the app-wide colour count exceeds ten by design. Each theme alone stays within its token set, and no literal colour appears outside a token block. Verifier: `tests/design.test.mjs`.
-- Reading size: `--fs` takes four user-selected values, and the drop cap and verse superscript are em multiples of it. They are the reader's setting, not extra steps of the scale.
-- Container queries: no component is reused at two widths, so `@container` has no current use.
