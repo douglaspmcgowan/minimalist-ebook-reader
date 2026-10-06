@@ -1,8 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 
 const root = new URL("../", import.meta.url);
+const { pageStarts, countWords } = createRequire(import.meta.url)("../pages.js");
 const read = (f) => readFileSync(new URL(f, root), "utf8");
 const css = read("styles.css");
 const html = read("index.html");
@@ -103,7 +105,7 @@ test("Cormorant Garamond is loaded at weight 500 with display=swap", () => {
 });
 
 test("--accent #CD9396 appears in every theme block", () => {
-  const themes = blocks(cssNoComments).filter((b) => /^(:root,\s*)?\[data-theme="[a-z]+"\]$|^body:not\(\[data-theme\]\)$/.test(b.selector));
+  const themes = blocks(cssNoComments).filter((b) => /^(:root,\s*)?(body)?\[data-theme="[a-z]+"\]$|^body:not\(\[data-theme\]\)$/.test(b.selector));
   assert.ok(themes.length >= 6, String(themes.length));
   for (const b of themes) assert.ok(/--accent:\s*#CD9396\b/i.test(b.body), b.selector);
 });
@@ -119,4 +121,39 @@ test("only weights 400 and 500 in CSS and font URL", () => {
   const weights = [...url.matchAll(/(?:^|[,;])(?:0|1),(?:6\.\.72,)?(\d+)(?=;|&|$)|wght@0,(?:6\.\.72,)?(\d+)/g)].map((m) => m[1] || m[2]);
   assert.ok(weights.length >= 2);
   for (const w of weights) assert.ok(w === "400" || w === "500", w);
+});
+
+test("pager responds to its container", () => {
+  assert.ok(css.includes("@container"));
+  assert.ok(/container-type:\s*inline-size/.test(css));
+  assert.ok(/@container reader \(max-width:\s*30rem\)/.test(css));
+});
+
+test("contents footnote states the 275-word estimate", () => {
+  const s = "Page numbers are estimates at 275 words a page";
+  assert.ok(js.includes(s) || html.includes(s));
+});
+
+test("pages.js loads before app.js", () => {
+  assert.ok(html.indexOf('src="pages.js"') > -1);
+  assert.ok(html.indexOf('src="pages.js"') < html.indexOf('src="app.js"'));
+});
+
+test("no motion outside the inventory", () => {
+  assert.ok(!/scroll-behavior:\s*smooth/.test(css));
+  assert.ok(!/sheetUp|@keyframes fade \{/.test(css));
+});
+
+test("page equivalents: 1 + floor(cumulative words before / 275)", () => {
+  const words = (n) => Array.from({ length: n }, () => "w").join(" ");
+  assert.equal(countWords("  one two\nthree  "), 3);
+  assert.equal(countWords(""), 0);
+  const chapters = [
+    { blocks: [{ t: "h", x: words(100) }, { t: "p", x: words(174) }] }, // 274
+    { blocks: [{ t: "p", x: words(1) }] },                              // 275 before next
+    { paragraphs: [words(550)] },                                       // legacy, starts at 275
+    { blocks: [] },                                                     // starts at 825
+  ];
+  assert.deepEqual(pageStarts(chapters), [1, 1, 2, 4]);
+  assert.deepEqual(pageStarts([]), []);
 });
